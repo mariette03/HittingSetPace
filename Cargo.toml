@@ -1,0 +1,31 @@
+[package]
+name = "findminhs"
+version = "2.1.0"
+authors = ["David Stangl <david@david-stangl.com>"]
+edition = "2021"
+license = "MIT"
+description = "An efficient branch-and-bound solver for hitting set"
+homepage = "https://github.com/Felerius/findminhs"
+repository = "https://github.com/Felerius/findminhs"
+documentation = "https://github.com/Felerius/findminhs"
+readme = "README.md"
+categories = ["command-line-utilities", "science"]
+keywords = ["hitting-set", "solver", "research"]
+exclude = ["evaluation/*"]
+
+[features]
+debug-skipvec = []
+
+[dependencies]
+anyhow = "1.0"
+derivative = "2.1"
+env_logger = "0.9"
+glpk-sys = "0.2.0"
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
+rustc-hash = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+structopt = "0.3"
+
+[profile.release]
+lto = true
