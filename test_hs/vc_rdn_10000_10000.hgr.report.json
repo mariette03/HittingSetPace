@@ -1,0 +1,73 @@
+{
+    "file_name": "vc_rdn_10000_10000.hgr",
+    "opt": 3939,
+    "branching_steps": 0,
+    "upper_bound_improvements":
+    [],
+    "settings":
+    {
+        "enable_local_search": false,
+        "enable_max_degree_bound": true,
+        "enable_sum_degree_bound": true,
+        "enable_efficiency_bound": true,
+        "enable_packing_bound": true,
+        "enable_sum_over_packing_bound": true,
+        "packing_from_scratch_limit": 3,
+        "greedy_mode": "Once",
+        "initial_hitting_set": null,
+        "enable_lp_lower_bound": true,
+        "ilp_size": 40,
+        "degree_one_removal": true,
+        "stop_at": 0
+    },
+    "runtimes":
+    {
+        "total": 0.000003127,
+        "greedy": 0.0,
+        "max_degree_bound": 0.0,
+        "sum_degree_bound": 0.0,
+        "efficiency_bound": 0.0,
+        "packing_bound": 0.0,
+        "sum_over_packing_bound": 0.0,
+        "discarded_vertex": 0.0,
+        "forced_vertex": 0.0,
+        "costly_discard_packing_update": 0.0,
+        "costly_discard_packing_from_scratch": 0.0,
+        "vertex_domination": 0.0,
+        "edge_domination": 0.0,
+        "applying_reductions": 0.0,
+        "lp_bound": 0.0,
+        "ilp_exact": 0.0
+    },
+    "reductions":
+    {
+        "max_degree_bound_breaks": 0,
+        "sum_degree_bound_breaks": 0,
+        "efficiency_degree_bound_breaks": 0,
+        "packing_bound_breaks": 0,
+        "sum_over_packing_bound_breaks": 0,
+        "lp_bound_breaks": 0,
+        "ilp_breaks": 0,
+        "greedy_runs": 0,
+        "discard_vertex_runs": 0,
+        "discard_vertices_found": 0,
+        "forced_vertex_runs": 0,
+        "forced_vertices_found": 0,
+        "costly_discard_efficiency_runs": 0,
+        "costly_discard_efficiency_vertices_found": 0,
+        "costly_discard_packing_update_runs": 0,
+        "costly_discard_packing_update_vertices_found": 0,
+        "costly_discard_packing_from_scratch_runs": 0,
+        "costly_discard_packing_from_scratch_steps_per_run":
+        [
+            0,
+            0,
+            0,
+            0
+        ],
+        "vertex_dominations_runs": 0,
+        "vertex_dominations_vertices_found": 0,
+        "edge_dominations_runs": 0,
+        "edge_dominations_edges_found": 0
+    }
+}

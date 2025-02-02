@@ -159,11 +159,11 @@ pub struct Settings {
     /// Compute Lower Bounds using LP
     pub enable_lp_lower_bound: bool,
 
-    /// How often to apply decay
-    pub branching_decay: usize,
+    /// Limit to activate ILP
+    pub ilp_size: usize,
 
-    /// The decay factor
-    pub decay_factor: f64,
+    /// Enable degree one removal
+    pub degree_one_removal: bool,
 
     /// Stop solving once a hitting set this size or smaller is found
     #[serde(default)]

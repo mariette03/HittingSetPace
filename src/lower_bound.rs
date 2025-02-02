@@ -11,7 +11,6 @@ create_idx_struct!(PackingIdx);
 
 /// ***************************************************************
 /// LP STUFF
-
 extern crate glpk_sys as glpk;
 
 use std::ffi::CString;
@@ -19,14 +18,8 @@ use std::ptr;
 use std::os::raw::*;
 
 const GLP_MIN: i32 = 1;  // Minimization objective
-// const GLP_MAX: i32 = 2;  // Maximization objective
-
 const GLP_LO: i32 = 2;   // Lower bound
-// const GLP_UP: i32 = 3;   // Upper bound
-
-// const GLP_BV: i32 = 3;   // Binary variable
 const GLP_DB: i32 = 4;   // Double bounded
-// const GLP_OPT: i32 = 5;
 /// ***************************************************************
 
 pub fn calc_lp_bound(instance: &Instance) -> Option<usize> {

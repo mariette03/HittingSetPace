@@ -472,14 +472,6 @@ pub fn reduce(
 
         let unchanged_len = reduced_items.len();
 
-        // Remove degree one vertices which have a neighbour
-        run_reduction(
-            &mut reduced_items,
-            &mut report.runtimes.discarded_vertex,
-            &mut report.reductions.discard_vertex_runs,
-            &mut report.reductions.discard_vertices_found,
-            || find_discard_vertex(instance),
-        );
         
         run_reduction(
             &mut reduced_items,
@@ -489,6 +481,17 @@ pub fn reduce(
             || find_forced_nodes(instance),
         );
 
+        if reduced_items.len() == unchanged_len && report.settings.degree_one_removal {
+            // Remove degree one vertices which have a neighbour
+            run_reduction(
+                &mut reduced_items,
+                &mut report.runtimes.discarded_vertex,
+                &mut report.reductions.discard_vertex_runs,
+                &mut report.reductions.discard_vertices_found,
+                || find_discard_vertex(instance),
+            );
+            
+        }
 
         if reduced_items.len() == unchanged_len && report.settings.enable_efficiency_bound {
             // Do not time this step as all costly parts are integrated into the

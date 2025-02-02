@@ -7,9 +7,7 @@ use crate::{
 use anyhow::{ensure, Result};
 use log::{debug, info, trace, warn};
 use std::time::Instant;
-use std::collections::HashSet;
-
-const ILP_LIMIT: usize = 75;
+use crate::lower_bound;
 
 /// ***************************************************************
 /// LP STUFF
@@ -40,19 +38,8 @@ pub struct State {
     pub minimum_hs: Vec<NodeIdx>,
     pub solve_start_time: Instant,
     pub last_log_time: Instant,
-    pub conflict_scores: Vec<f64>,
     pub global_lower_bound: usize,
-    pub ilp_matrix: ILPMatrix
 }
-
-impl State {
-    fn apply_decay(&mut self, decay_factor: f64) {
-        for score in &mut self.conflict_scores {
-            *score *= decay_factor;
-        }
-    }
-}
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum Status {
@@ -72,11 +59,6 @@ fn branch_on(
 ) -> Status {
     trace!("Branching on {}", node);
     report.branching_steps += 1;
-
-    if report.branching_steps % report.settings.branching_decay == 0 {
-        state.apply_decay(report.settings.decay_factor);
-    }
-
     instance.delete_node(node);
 
     instance.delete_incident_edges(node);
@@ -86,11 +68,6 @@ fn branch_on(
     state.partial_hs.pop();
     instance.restore_incident_edges(node);
 
-    // Apply conflict score
-    if status_with_vertex_in_hs == Status::Stop {
-        state.conflict_scores[node.idx()] += 1.0;
-    }
-
     if status_with_vertex_in_hs == Status::Stop {
         instance.restore_node(node);
         return Status::Stop;
@@ -99,36 +76,31 @@ fn branch_on(
     let status_without_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance);
     instance.restore_node(node);
 
-    // Apply conflict score
-    // if status_with_vertex_in_hs == Status::Stop {
-    //     state.conflict_scores[node.idx()] += 1.0;
-    // }
-
     status_without_vertex_in_hs
 }
 
-fn select_vertex(instance: &Instance, state: &State, vertex_importance: &[f64]) -> NodeIdx {
-    // instance
-    //     .nodes()
-    //     .iter()
-    //     .copied()
-    //     .max_by(|&a, &b| {
-    //         let score_a = vertex_importance[a.idx()] * instance.node_degree(a) as f64;
-    //         let score_b = vertex_importance[b.idx()] * instance.node_degree(b) as f64;
-    //         score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-    //     })
-    //     .expect("Branching on an empty instance")
+fn select_vertex(instance: &Instance, vertex_importance: &[f64]) -> NodeIdx {
     instance
         .nodes()
         .iter()
         .copied()
         .max_by(|&a, &b| {
-            let score_a = vertex_importance[a.idx()] * (instance.node_degree(a) as f64 + state.conflict_scores[a.idx()]);
-            let score_b = vertex_importance[b.idx()] * (instance.node_degree(b) as f64 + state.conflict_scores[b.idx()]);
-
-            (score_a).partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+            let score_a = vertex_importance[a.idx()] * instance.node_degree(a) as f64;
+            let score_b = vertex_importance[b.idx()] * instance.node_degree(b) as f64;
+            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
         })
         .expect("Branching on an empty instance")
+    // instance
+    //     .nodes()
+    //     .iter()
+    //     .copied()
+    //     .max_by(|&a, &b| {
+    //         let score_a = vertex_importance[a.idx()] * (instance.node_degree(a) as f64 + state.conflict_scores[a.idx()]);
+    //         let score_b = vertex_importance[b.idx()] * (instance.node_degree(b) as f64 + state.conflict_scores[b.idx()]);
+
+    //         (score_a).partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+    //     })
+    //     .expect("Branching on an empty instance")
 }
 
 fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Report, vertex_importance: &mut Vec<f64>) -> Status {
@@ -181,12 +153,12 @@ fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Repo
         ReductionResult::Unsolvable => Status::Continue,
         ReductionResult::Stop => Status::Stop,
         ReductionResult::Finished => {
-            if instance.num_edges() <= ILP_LIMIT {
+            if instance.num_nodes() <= report.settings.ilp_size && instance.num_nodes() as f64 * 1.5 <= instance.num_edges() as f64{
                 let before = Instant::now();
-                let (ilp_result, ilp_solution) = solve_ilp_exact(instance, state);
+                let (ilp_result, ilp_solution) = solve_ilp_exact(instance);
                 report.runtimes.ilp_exact += before.elapsed();
 
-                if ilp_result > 0 {
+                if ilp_result != usize::MAX {
                     if state.partial_hs.len() + ilp_result < state.minimum_hs.len() {
                         info!("Found HS of size {} by ILP", state.partial_hs.len() + ilp_result);
                         state.minimum_hs.clear();
@@ -197,7 +169,7 @@ fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Repo
                     return Status::Continue;
                 }
             }
-            let node = select_vertex(instance, state, &vertex_importance);
+            let node = select_vertex(instance, &vertex_importance);
             branch_on(node, instance, state, report, vertex_importance)
         }
     };
@@ -355,123 +327,7 @@ pub fn solve_lp_mu(instance: &Instance, eta: f64, iterations: usize) -> Vec<f64>
 }
 */
 
-/// ILP SOLVER
-#[derive(Debug, Clone)] // Derive Clone for ILPMatrix
-pub struct ILPMatrix {
-    pub ia: Vec<c_int>,  // Make fields public
-    pub ja: Vec<c_int>,
-    pub ar: Vec<c_double>,
-    pub num_rows: i32,   // Make fields public
-    pub num_cols: i32,   // Make fields public
-}
 
-impl ILPMatrix {
-    pub fn new(instance: &Instance) -> Self {  // Make method public
-        let num_sets = instance.num_edges();
-        let num_elements = instance.num_nodes_total();
-
-        let mut matrix = Self {
-            ia: vec![0],
-            ja: vec![0],
-            ar: vec![0.0],
-            num_rows: num_sets as i32,
-            num_cols: num_elements as i32,
-        };
-
-        for (j, &edge) in instance.edges().iter().enumerate() {
-            let row_idx = (j + 1) as c_int;
-            for node in instance.edge(edge) {
-                let col_idx = (node.idx() + 1) as c_int;
-                matrix.ia.push(row_idx);
-                matrix.ja.push(col_idx);
-                matrix.ar.push(1.0);
-            }
-        }
-
-        matrix
-    }
-
-    pub fn load_into_glpk(&self, lp: *mut glpk::glp_prob) {  // Make method public
-        unsafe {
-            glpk::glp_load_matrix(lp, (self.ia.len() - 1) as i32, self.ia.as_ptr(), self.ja.as_ptr(), self.ar.as_ptr());
-        }
-    }
-}
-
-pub fn solve_ilp_exact(instance: &mut Instance, state: &mut State) -> (usize, Vec<NodeIdx>) {
-    unsafe {
-        let partial_hs_map: HashSet<NodeIdx> = state.partial_hs.iter().cloned().collect();
-
-        glpk::glp_term_out(0);
-
-        let lp = glpk::glp_create_prob();
-        glpk::glp_set_prob_name(lp, CString::new("hitting_set_ilp").unwrap().as_ptr());
-        glpk::glp_set_obj_dir(lp, GLP_MIN);
-
-        glpk::glp_add_rows(lp, state.ilp_matrix.num_rows);
-        glpk::glp_add_cols(lp, state.ilp_matrix.num_cols);
-
-        for i in 0..state.ilp_matrix.num_cols {
-            let col_idx = (i + 1) as i32;
-
-            let node = NodeIdx::from(i as usize);
-
-            if partial_hs_map.contains(&node) {
-                glpk::glp_set_col_bnds(lp, col_idx, GLP_FX, 1.0, 1.0);
-            } else if instance.is_node_deleted(node) {
-                glpk::glp_set_col_bnds(lp, col_idx, GLP_FX, 0.0, 0.0);
-            } else {
-                glpk::glp_set_col_bnds(lp, col_idx, GLP_DB, 0.0, 1.0);
-                glpk::glp_set_obj_coef(lp, col_idx, 1.0);
-                glpk::glp_set_col_kind(lp, col_idx, GLP_BV);
-            }
-        }
-
-        for j in 0..state.ilp_matrix.num_rows {
-            let row_idx = (j + 1) as i32;
-            glpk::glp_set_row_bnds(lp, row_idx, GLP_LO, 1.0, f64::INFINITY);
-        }
-
-        state.ilp_matrix.load_into_glpk(lp);
-        glpk::glp_scale_prob(lp, 0x80);
-
-        let mut smcp: glpk::glp_smcp = std::mem::zeroed();
-        glpk::glp_init_smcp(&mut smcp);
-        smcp.presolve = 1;
-        if glpk::glp_simplex(lp, &mut smcp) != 0 {
-            glpk::glp_delete_prob(lp);
-            return (usize::MAX, vec![]);
-        }
-
-        let mut iocp: glpk::glp_iocp = std::mem::zeroed();
-        glpk::glp_init_iocp(&mut iocp);
-        iocp.presolve = 1;
-        iocp.mip_gap = 1e-6;
-        iocp.tm_lim = 300000;
-        iocp.msg_lev = 3;
-
-        if glpk::glp_intopt(lp, &mut iocp) != 0 {
-            glpk::glp_delete_prob(lp);
-            return (usize::MAX, vec![]);
-        }
-
-        let z = glpk::glp_mip_obj_val(lp).ceil() as usize;
-        let mut result = Vec::with_capacity(z);
-        for i in 0..state.ilp_matrix.num_cols {
-            let col_idx = (i + 1) as i32;
-            let node = NodeIdx::from(i as usize);
-
-            if glpk::glp_mip_col_val(lp, col_idx) as i32 == 1 && !partial_hs_map.contains(&node) {
-                result.push((i as usize).into());
-            }
-        }
-
-        glpk::glp_delete_prob(lp);
-        (z, result)
-    }
-}
-
-/*
 pub fn solve_ilp_exact(instance: &Instance) -> (usize, Vec<NodeIdx>) {
     unsafe {
         glpk::glp_term_out(0);
@@ -568,7 +424,6 @@ pub fn solve_ilp_exact(instance: &Instance) -> (usize, Vec<NodeIdx>) {
         (z, result)
     }
 }
-*/
 
 /*
 pub fn solve_ilp(instance: &Instance) -> (usize, Vec<NodeIdx>) {
@@ -699,16 +554,14 @@ pub fn solve(
         minimum_hs: initial_hs,
         last_log_time: Instant::now(),
         solve_start_time: Instant::now(),
-        conflict_scores: vec![1.0; instance.num_nodes_total()],
         global_lower_bound: lp_bound,
-        ilp_matrix: ILPMatrix::new(&instance),
     };
 
     let _ = solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
     report.runtimes.total = state.solve_start_time.elapsed();
     report.opt = state.minimum_hs.len();
 
-    info!("Validating found hitting set");
+    // info!("Validating found hitting set");
     assert_eq!(instance.num_nodes_total(), instance.nodes().len());
     assert_eq!(instance.num_edges_total(), instance.edges().len());
     assert!(is_hitting_set(&state.minimum_hs, &instance));
