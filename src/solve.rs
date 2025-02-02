@@ -1,14 +1,12 @@
 use crate::{
     instance::{Instance, NodeIdx, EdgeIdx},
-    lower_bound::{self, PackingBound},
     reductions::{self, ReductionResult},
-    report::{ReductionStats, Report, RootBounds, RuntimeStats, Settings, UpperBoundImprovement},
+    report::{ReductionStats, Report, RuntimeStats, Settings, UpperBoundImprovement},
     small_indices::{IdxHashSet, SmallIdx},
 };
 use anyhow::{ensure, Result};
 use log::{debug, info, trace, warn};
 use std::time::Instant;
-
 use std::collections::HashSet;
 
 const ILP_LIMIT: usize = 75;
@@ -36,24 +34,21 @@ const GLP_DB: i32 = 4;   // Double bounded
 
 const ITERATION_LOG_INTERVAL_SECS: u64 = 60;
 
-use std::collections::HashMap;
-
 #[derive(Debug, Clone)]
 pub struct State {
     pub partial_hs: Vec<NodeIdx>,
     pub minimum_hs: Vec<NodeIdx>,
     pub solve_start_time: Instant,
     pub last_log_time: Instant,
-    pub conflict_scores: HashMap<NodeIdx, f64>,
-    pub decay_factor: f64,
+    pub conflict_scores: Vec<f64>,
     pub global_lower_bound: usize,
     pub ilp_matrix: ILPMatrix
 }
 
 impl State {
-    fn apply_decay(&mut self) {
-        for score in self.conflict_scores.values_mut() {
-            *score *= self.decay_factor;
+    fn apply_decay(&mut self, decay_factor: f64) {
+        for score in &mut self.conflict_scores {
+            *score *= decay_factor;
         }
     }
 }
@@ -78,8 +73,8 @@ fn branch_on(
     trace!("Branching on {}", node);
     report.branching_steps += 1;
 
-    if report.branching_steps % 64 == 0 {
-        state.apply_decay();
+    if report.branching_steps % report.settings.branching_decay == 0 {
+        state.apply_decay(report.settings.decay_factor);
     }
 
     instance.delete_node(node);
@@ -93,7 +88,7 @@ fn branch_on(
 
     // Apply conflict score
     if status_with_vertex_in_hs == Status::Stop {
-        *state.conflict_scores.entry(node).or_insert(0.0) += 1.0;
+        state.conflict_scores[node.idx()] += 1.0;
     }
 
     if status_with_vertex_in_hs == Status::Stop {
@@ -104,36 +99,36 @@ fn branch_on(
     let status_without_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance);
     instance.restore_node(node);
 
-    // // Apply conflict score
+    // Apply conflict score
     // if status_with_vertex_in_hs == Status::Stop {
-    //     *state.conflict_scores.entry(node).or_insert(0.0) += 1.0;
+    //     state.conflict_scores[node.idx()] += 1.0;
     // }
 
     status_without_vertex_in_hs
 }
 
 fn select_vertex(instance: &Instance, state: &State, vertex_importance: &[f64]) -> NodeIdx {
-    instance
-        .nodes()
-        .iter()
-        .copied()
-        .max_by(|&a, &b| {
-            let score_a = vertex_importance[a.idx()] * instance.node_degree(a) as f64;
-            let score_b = vertex_importance[b.idx()] * instance.node_degree(b) as f64;
-            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .expect("Branching on an empty instance")
     // instance
     //     .nodes()
     //     .iter()
     //     .copied()
     //     .max_by(|&a, &b| {
-    //         let score_a = vertex_importance[a.idx()] * (instance.node_degree(a) as f64 + state.conflict_scores.get(&a).copied().unwrap_or(1.0));
-    //         let score_b = vertex_importance[b.idx()] * (instance.node_degree(b) as f64 + state.conflict_scores.get(&b).copied().unwrap_or(1.0));
-
-    //         (score_a).partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+    //         let score_a = vertex_importance[a.idx()] * instance.node_degree(a) as f64;
+    //         let score_b = vertex_importance[b.idx()] * instance.node_degree(b) as f64;
+    //         score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
     //     })
     //     .expect("Branching on an empty instance")
+    instance
+        .nodes()
+        .iter()
+        .copied()
+        .max_by(|&a, &b| {
+            let score_a = vertex_importance[a.idx()] * (instance.node_degree(a) as f64 + state.conflict_scores[a.idx()]);
+            let score_b = vertex_importance[b.idx()] * (instance.node_degree(b) as f64 + state.conflict_scores[b.idx()]);
+
+            (score_a).partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .expect("Branching on an empty instance")
 }
 
 fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Report, vertex_importance: &mut Vec<f64>) -> Status {
@@ -219,6 +214,7 @@ fn is_hitting_set(hs: &[NodeIdx], instance: &Instance) -> bool {
         .all(|&edge| instance.edge(edge).any(|node| hs_set.contains(&node)))
 }
 
+/*
 fn calculate_root_bounds(instance: &Instance, settings: &Settings) -> RootBounds {
     let num_nodes = instance.num_nodes_total();
     let root_packing = PackingBound::new(instance, settings);
@@ -234,6 +230,7 @@ fn calculate_root_bounds(instance: &Instance, settings: &Settings) -> RootBounds
         greedy_upper: reductions::calc_greedy_approximation(instance).len(),
     }
 }
+*/
 
 pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
     unsafe {
@@ -684,14 +681,14 @@ pub fn solve(
     info!("Size of LP-guided greedy HS: {}, took {:.2?}", initial_hs.len(), time_spend_lp);
 
     // let initial_hs = get_initial_hitting_set(&instance, &settings)?;
-    let root_bounds = calculate_root_bounds(&instance, &settings);
+    // let root_bounds = calculate_root_bounds(&instance, &settings);
     let packing_from_scratch_limit = settings.packing_from_scratch_limit;
     let mut report = Report {
         file_name,
         opt: initial_hs.len(),
         branching_steps: 0,
         settings,
-        root_bounds,
+        // root_bounds,
         runtimes: RuntimeStats::default(),
         reductions: ReductionStats::new(packing_from_scratch_limit),
         upper_bound_improvements: Vec::new(),
@@ -702,8 +699,7 @@ pub fn solve(
         minimum_hs: initial_hs,
         last_log_time: Instant::now(),
         solve_start_time: Instant::now(),
-        conflict_scores: HashMap::new(),
-        decay_factor: 0.95,
+        conflict_scores: vec![1.0; instance.num_nodes_total()],
         global_lower_bound: lp_bound,
         ilp_matrix: ILPMatrix::new(&instance),
     };

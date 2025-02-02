@@ -159,6 +159,12 @@ pub struct Settings {
     /// Compute Lower Bounds using LP
     pub enable_lp_lower_bound: bool,
 
+    /// How often to apply decay
+    pub branching_decay: usize,
+
+    /// The decay factor
+    pub decay_factor: f64,
+
     /// Stop solving once a hitting set this size or smaller is found
     #[serde(default)]
     pub stop_at: usize,
@@ -171,7 +177,7 @@ pub struct Report {
     pub branching_steps: usize,
     pub upper_bound_improvements: Vec<UpperBoundImprovement>,
     pub settings: Settings,
-    pub root_bounds: RootBounds,
+    // pub root_bounds: RootBounds,
     pub runtimes: RuntimeStats,
     pub reductions: ReductionStats,
 }
