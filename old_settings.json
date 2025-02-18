@@ -7,8 +7,8 @@
     "enable_sum_over_packing_bound": true,
     "packing_from_scratch_limit": 3,
     "greedy_mode": "Once",
-    "degree_one_removal": true,
-    "enable_lp_lower_bound": true,
-    "ilp_size": 100,
-    "lp_guided": true
+    "degree_one_removal": false,
+    "enable_lp_lower_bound": false,
+    "ilp_size": 0,
+    "lp_guided": false
 }

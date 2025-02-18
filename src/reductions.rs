@@ -1,8 +1,8 @@
 use crate::{
     data_structures::{subset_trie::SubsetTrie, superset_trie::SupersetTrie},
-    instance::{EdgeIdx, Instance, NodeIdx},
+    instance::{EdgeIdx, Instance, NodeIdx, InstanceType},
     lower_bound::{self, EfficiencyBound, PackingBound},
-    report::{GreedyMode, Report, Settings, UpperBoundImprovement},
+    report::{GreedyMode, Report, Settings},
     small_indices::{IdxHashSet, SmallIdx},
     solve::State,
 };
@@ -109,7 +109,7 @@ fn find_dominated_edges(instance: &Instance) -> impl Iterator<Item = ReducedItem
 
 use std::collections::HashSet;
 
-fn find_discard_vertex(instance: &Instance) -> impl Iterator<Item = ReducedItem> {
+fn find_discard_and_forced_vertex(instance: &Instance) -> impl Iterator<Item = ReducedItem> {
     let mut marked_for_removal = HashSet::new();
     let mut forced_nodes = HashSet::new();
 
@@ -140,6 +140,35 @@ fn find_discard_vertex(instance: &Instance) -> impl Iterator<Item = ReducedItem>
         .into_iter()
         .map(ReducedItem::RemovedNode)
         .chain(forced_nodes.into_iter().map(ReducedItem::ForcedNode))
+}
+
+fn find_discard_vertex(instance: &Instance) -> impl Iterator<Item = ReducedItem> {
+    let mut marked_for_removal = HashSet::new();
+
+    let discard_candidates: Vec<_> = instance
+        .nodes()
+        .iter()
+        .copied()
+        .filter(|&node| instance.node_degree(node) <= 1)
+        .collect();
+
+    for &node in &discard_candidates {
+        if instance.node_degree(node) == 0 {
+            marked_for_removal.insert(node);
+            continue;
+        }
+        let mut edges = instance.node(node);
+        let edge = edges.next().unwrap();
+        let edge_nodes: Vec<_> = instance.edge(edge).collect();
+
+        if edge_nodes.iter().any(|&w| w != node && !marked_for_removal.contains(&w)) {
+            marked_for_removal.insert(node);
+        }
+    }
+
+    marked_for_removal
+        .into_iter()
+        .map(ReducedItem::RemovedNode)
 }
 
 fn find_forced_nodes(instance: &Instance) -> impl Iterator<Item = ReducedItem> {
@@ -320,24 +349,26 @@ pub fn calc_greedy_approximation(instance: &Instance) -> Vec<NodeIdx> {
 
 fn recalculate_greedy_upper_bound(instance: &Instance, state: &mut State, report: &mut Report) {
     report.reductions.greedy_runs += 1;
-    let improvements_list_ref = &mut report.upper_bound_improvements;
-    let branching_steps = report.branching_steps;
+    // let improvements_list_ref = &mut report.upper_bound_improvements;
+    // let branching_steps = report.branching_steps;
     collect_time_info(&mut report.runtimes.greedy, || {
         let greedy = calc_greedy_approximation(instance);
         if state.partial_hs.len() + greedy.len() < state.minimum_hs.len() {
             state.minimum_hs.clear();
             state.minimum_hs.extend(state.partial_hs.iter().copied());
             state.minimum_hs.extend(greedy.iter().copied());
-            improvements_list_ref.push(UpperBoundImprovement {
-                new_bound: state.minimum_hs.len(),
-                branching_steps,
-                runtime: state.solve_start_time.elapsed(),
-            });
+            // improvements_list_ref.push(UpperBoundImprovement {
+            //     new_bound: state.minimum_hs.len(),
+            //     branching_steps,
+            //     runtime: state.solve_start_time.elapsed(),
+            // });
             info!(
-                "Found HS of size {} using greedy (partial {} + greedy {})",
+                "Found HS of size {} using greedy (partial {} + greedy {}) |V|={}, |E|={}",
                 state.minimum_hs.len(),
                 state.partial_hs.len(),
-                greedy.len()
+                greedy.len(),
+                instance.num_nodes(),
+                instance.num_edges()
             );
         }
     });
@@ -472,7 +503,17 @@ pub fn reduce(
 
         let unchanged_len = reduced_items.len();
 
-        
+        if report.settings.degree_one_removal {
+            // Remove degree one vertices which have a neighbour
+            run_reduction(
+                &mut reduced_items,
+                &mut report.runtimes.discarded_vertex,
+                &mut report.reductions.discard_vertex_runs,
+                &mut report.reductions.discard_vertices_found,
+                || find_discard_and_forced_vertex(instance),
+            );
+        }
+
         run_reduction(
             &mut reduced_items,
             &mut report.runtimes.forced_vertex,
@@ -480,18 +521,6 @@ pub fn reduce(
             &mut report.reductions.forced_vertices_found,
             || find_forced_nodes(instance),
         );
-
-        if reduced_items.len() == unchanged_len && report.settings.degree_one_removal {
-            // Remove degree one vertices which have a neighbour
-            run_reduction(
-                &mut reduced_items,
-                &mut report.runtimes.discarded_vertex,
-                &mut report.reductions.discard_vertex_runs,
-                &mut report.reductions.discard_vertices_found,
-                || find_discard_vertex(instance),
-            );
-            
-        }
 
         if reduced_items.len() == unchanged_len && report.settings.enable_efficiency_bound {
             // Do not time this step as all costly parts are integrated into the
@@ -544,7 +573,7 @@ pub fn reduce(
             lower_bound_breakpoint = state.minimum_hs.len() - state.partial_hs.len();
         }
 
-        if reduced_items.len() == unchanged_len {
+        if reduced_items.len() == unchanged_len && report.settings.enable_packing_bound {
             let table_ref = &mut report
                 .reductions
                 .costly_discard_packing_from_scratch_steps_per_run;
@@ -616,6 +645,13 @@ pub fn reduce_for_ilp(instance: &mut Instance) -> (usize, usize) {
     let mut reduced_edges = 0;
     loop {
         let mut changed = false;
+
+        reduced.extend(find_discard_vertex(instance));
+        reduced_nodes += reduced.len();
+        changed |= !reduced.is_empty();
+        for item in reduced.drain(..) {
+            item.apply(instance, &mut dummy_partial_hs);
+        }
 
         reduced.extend(find_dominated_nodes(instance));
         reduced_nodes += reduced.len();

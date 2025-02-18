@@ -78,6 +78,7 @@ pub struct ReductionStats {
     pub sum_over_packing_bound_breaks: usize,
     pub lp_bound_breaks: usize,
     pub ilp_breaks: usize,
+    pub ilp_improvements: usize,
 
     pub greedy_runs: usize,
     pub discard_vertex_runs: usize,
@@ -165,6 +166,9 @@ pub struct Settings {
     /// Enable degree one removal
     pub degree_one_removal: bool,
 
+    /// Use first LP to guide vertex selection
+    pub lp_guided: bool,
+
     /// Stop solving once a hitting set this size or smaller is found
     #[serde(default)]
     pub stop_at: usize,
@@ -177,9 +181,9 @@ pub struct Report {
     pub branching_steps: usize,
     pub upper_bound_improvements: Vec<UpperBoundImprovement>,
     pub settings: Settings,
-    // pub root_bounds: RootBounds,
     pub runtimes: RuntimeStats,
     pub reductions: ReductionStats,
+    pub instance_type: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

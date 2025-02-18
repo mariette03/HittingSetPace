@@ -12,10 +12,20 @@ use std::{
     mem,
     time::Instant,
 };
+use serde::Serialize;
 
 create_idx_struct!(pub NodeIdx);
 create_idx_struct!(pub EdgeIdx);
 create_idx_struct!(pub EntryIdx);
+
+#[derive(Debug, Clone, Serialize)]
+pub enum InstanceType {
+    FlatDegree = (1<<0),
+    VariedDegree = (1<<1),
+    Dense = (1<<2),
+    Sparse = (1<<3),
+    Graph = (1<<4),
+}
 
 #[derive(Debug)]
 struct CompressedIlpName<T>(T);
@@ -443,4 +453,199 @@ impl Instance {
         writeln!(writer, "End")?;
         Ok(())
     }
+
+    pub fn get_instance_type(&self) -> u32 {
+        let mut result = 0;
+
+        let node_degrees = &self.node_degrees();
+
+        let min_degree = node_degrees.iter().min().unwrap_or(&0);
+        let max_degree = node_degrees.iter().max().unwrap_or(&0);
+
+        let num_nodes = self.num_nodes_total();
+        let num_edges = self.num_edges_total();
+        
+        if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 {
+            result |= InstanceType::FlatDegree as u32;
+        } else {
+            result |= InstanceType::VariedDegree as u32;
+        }
+
+        if num_edges > num_nodes * 2 {
+            result |= InstanceType::Dense as u32;
+        } else {
+            result |= InstanceType::Sparse as u32;
+        }
+
+        let max_edge_size = self.edges
+            .iter()
+            .map(|&edge| self.edge_incidences[edge.idx()].len())
+            .max()
+            .unwrap_or(0);
+
+        if max_edge_size <= 2 {
+            result |= InstanceType::Graph as u32;
+        }
+
+        result
+    }
+
+
+    fn node_degrees(&self) -> Vec<usize> {
+        self.node_incidences.iter().map(|inc| inc.len()).collect()
+    }
+
+    pub fn show_stats(&self) {
+        let mut degrees: Vec<usize> = self.nodes.iter()
+            .map(|&node| self.node_degree(node))
+            .collect();
+        
+        if degrees.is_empty() {
+            println!("No nodes available.");
+            return;
+        }
+
+        degrees.sort_unstable();
+
+        for percentile in (0..=100).step_by(10) {
+            let index = (percentile as f64 / 100.0 * (degrees.len() as f64 - 1.0)).round() as usize;
+            println!("{}% percentile: {}", percentile, degrees[index]);
+        }
+    }
+
+    /// Exports the hitting set instance as a weighted MaxSAT (wcnf) instance.
+    ///
+    /// Each node is represented by a Boolean variable. For every node we add a
+    /// soft clause (with weight 1) preferring that the node is *not* chosen, and
+    /// for every edge we add a hard clause (with weight `top`) enforcing that at least one
+    /// incident node is chosen. The DIMACS wcnf header is:
+    ///
+    ///     p wcnf <num_vars> <num_clauses> <top>
+    ///
+    /// # Parameters
+    ///
+    /// - `writer`: An output sink to which the DIMACS representation will be written.
+    ///
+    /// # Returns
+    ///
+    /// A Result with an empty tuple on success.
+    pub fn export_to_max_sat(&self, mut writer: impl Write) -> Result<()> {
+        // We assume that self.nodes() returns the list of alive nodes.
+        let alive_nodes = self.nodes();
+        let num_vars = alive_nodes.len();
+        let num_soft_clauses = num_vars;
+        let num_hard_clauses = self.edges().len();
+        let total_clauses = num_soft_clauses + num_hard_clauses;
+        // The top weight must exceed the sum of soft clause weights.
+        let top = num_soft_clauses + 1;
+
+        // In DIMACS the variables are 1-indexed. Because our NodeIdx values may be
+        // sparse (or not in order) due to deletions, we create a mapping from NodeIdx to
+        // new variable numbers.
+        let mut node_var = vec![None; self.node_incidences.len()];
+        for (i, &node) in alive_nodes.iter().enumerate() {
+            node_var[node.idx()] = Some(i + 1);
+        }
+
+        // Write the header line.
+        writeln!(writer, "p wcnf {} {} {}", num_vars, total_clauses, top)?;
+
+        // Write one soft clause per alive node:
+        // Each soft clause is: 1 -<var> 0
+        // (i.e. we “prefer” that the node is not chosen).
+        for &node in alive_nodes {
+            let var = node_var[node.idx()]
+                .ok_or_else(|| anyhow!("Alive node missing mapping"))?;
+            writeln!(writer, "1 -{} 0", var)?;
+        }
+
+        // Write one hard clause per edge:
+        // For each edge, we create a clause with weight top that is the disjunction
+        // of the (positive) node variables in the edge.
+        for &edge in self.edges() {
+            // Gather the variable numbers for all nodes incident to this edge.
+            let clause_vars: Vec<_> = self
+                .edge(edge)
+                .map(|node| {
+                    node_var[node.idx()]
+                        .ok_or_else(|| anyhow!("Edge contains a deleted node"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            ensure!(!clause_vars.is_empty(), "Edge clause is empty");
+            write!(writer, "{} ", top)?;
+            for var in clause_vars {
+                write!(writer, "{} ", var)?;
+            }
+            writeln!(writer, "0")?;
+        }
+
+        Ok(())
+    }
+
+    /// Computes the variance of node degrees.
+    pub fn degree_variance(&self) -> f64 {
+        let num_nodes = self.num_nodes();
+        if num_nodes == 0 {
+            return 0.0;
+        }
+
+        let mean_degree = self.edges.len() as f64 / num_nodes as f64;
+        let variance = self.nodes().iter()
+            .map(|&node| {
+                let degree = self.node_degree(node) as f64;
+                (degree - mean_degree).powi(2)
+            })
+            .sum::<f64>() / num_nodes as f64;
+        
+        info!("Variance {}", variance);
+        variance
+    }
+
+    /// Computes the entropy of the node degree distribution.
+    pub fn degree_entropy(&self) -> f64 {
+        let num_nodes = self.num_nodes();
+        if num_nodes == 0 {
+            return 0.0;
+        }
+
+        let mut degree_counts = vec![0; self.num_edges_total()];
+        for &node in self.nodes() {
+            degree_counts[self.node_degree(node)] += 1;
+        }
+
+        let mut entropy = 0.0;
+        for &count in &degree_counts {
+            if count > 0 {
+                let p = count as f64 / num_nodes as f64;
+                entropy -= p * p.log2();
+            }
+        }
+
+        info!("Entropy {}", entropy);
+
+        entropy
+    }
+
+    /// Computes the edge-to-node ratio.
+    pub fn edge_to_node_ratio(&self) -> f64 {
+        if self.num_nodes() == 0 {
+            return 0.0;
+        }
+        info!("edge / node {}", self.num_edges() as f64 / self.num_nodes() as f64);
+
+        self.num_edges() as f64 / self.num_nodes() as f64
+    }
+
+    pub fn is_hard_instance(&self) -> bool {
+        let degree_var = self.degree_variance();
+        let degree_entropy = self.degree_entropy();
+        let edge_node_ratio = self.edge_to_node_ratio();
+
+        let low_variance = degree_var < 50.0;
+        let low_entropy = degree_entropy < 3.5;
+        let sparse_graph = edge_node_ratio < 1.5;
+
+        low_variance && low_entropy && sparse_graph
+    }
+
 }

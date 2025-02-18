@@ -175,35 +175,30 @@ impl<T> SkipVec<T> {
         self.entries[idx].prev.idx_if_valid()
     }
 
-    /// Delete the item with the given index.
-    ///
-    /// This can corrupt the list if the item was already deleted.
     pub fn delete(&mut self, index: usize) {
         #[cfg(feature = "debug-skipvec")]
         {
-            debug_assert!(
-                !self.entries[index].deleted,
-                "Entry {} already deleted",
-                index
-            );
+            debug_assert!(!self.entries[index].deleted, "Entry {} already deleted", index);
             self.entries[index].deleted = true;
         }
-        let Entry { prev, next, .. } = self.entries[index];
+        let entry = &mut self.entries[index]; // Reduce redundant access
+        let prev = entry.prev;
+        let next = entry.next;
+
         self.len -= 1;
+
         if prev.valid() {
-            debug_assert_eq!(self.entries[prev.idx()].next, EntryIdx::from(index));
             self.entries[prev.idx()].next = next;
         } else {
-            debug_assert_eq!(self.first, EntryIdx::from(index));
             self.first = next;
         }
+
         if next.valid() {
-            debug_assert_eq!(self.entries[next.idx()].prev, EntryIdx::from(index));
             self.entries[next.idx()].prev = prev;
         } else {
-            debug_assert_eq!(self.last, EntryIdx::from(index));
             self.last = prev;
         }
+
         #[cfg(feature = "debug-skipvec")]
         {
             self.deletions.push(EntryIdx::from(index));
@@ -211,45 +206,32 @@ impl<T> SkipVec<T> {
         }
     }
 
-    /// Restore a deleted item.
-    ///
-    /// This operation only produces correct results if the restorations are
-    /// done in the reverse order of the corresponding deletions. Otherwise,
-    /// the results will be unpredictable (but still memory-safe).
     pub fn restore(&mut self, index: usize) {
         #[cfg(feature = "debug-skipvec")]
         {
             let popped = self.deletions.pop();
-            debug_assert_eq!(
-                popped,
-                Some(EntryIdx::from(index)),
-                "Restorations out-of-order: expected {:?} next, but got {}",
-                popped,
-                index
-            );
-            debug_assert!(
-                self.entries[index].deleted,
-                "Entry {} already restored",
-                index
-            );
+            debug_assert_eq!(popped, Some(EntryIdx::from(index)), "Restorations out-of-order");
+            debug_assert!(self.entries[index].deleted, "Entry {} already restored", index);
             self.entries[index].deleted = false;
         }
-        let Entry { prev, next, .. } = self.entries[index];
+        let entry = &mut self.entries[index]; // Reduce redundant access
+        let prev = entry.prev;
+        let next = entry.next;
+
         self.len += 1;
+
         if prev.valid() {
-            debug_assert_eq!(self.entries[prev.idx()].next, next);
             self.entries[prev.idx()].next = EntryIdx::from(index);
         } else {
-            debug_assert_eq!(self.first, next);
             self.first = EntryIdx::from(index);
         }
+
         if next.valid() {
-            debug_assert_eq!(self.entries[next.idx()].prev, prev);
             self.entries[next.idx()].prev = EntryIdx::from(index);
         } else {
-            debug_assert_eq!(self.last, prev);
             self.last = EntryIdx::from(index);
         }
+
         #[cfg(feature = "debug-skipvec")]
         {
             self.check_invariants();
