@@ -647,5 +647,4 @@ impl Instance {
 
         low_variance && low_entropy && sparse_graph
     }
-
 }

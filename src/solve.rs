@@ -131,9 +131,9 @@ fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Repo
         ReductionResult::Stop => Status::Stop,
         ReductionResult::Finished => {
             let mut use_ilp : bool = false;
-            use_ilp |= instance.num_nodes() <= report.settings.ilp_size && (report.instance_type & InstanceType::Dense as u32) != 0;
-            // use_ilp |= instance.num_nodes() <= 40 && (report.instance_type & InstanceType::Sparse as u32) != 0;
-            use_ilp |= report.settings.ilp_size != 0 && instance.num_nodes() <= 200 && (report.instance_type & InstanceType::Graph as u32) != 0;
+            use_ilp |= instance.num_nodes() <= report.settings.ilp_size && (report.instance_type & InstanceType::Dense as u32) != 0 && (report.instance_type & InstanceType::Graph as u32)== 0;
+            // // use_ilp |= instance.num_nodes() <= 40 && (report.instance_type & InstanceType::Sparse as u32) != 0;
+            // use_ilp |= report.settings.ilp_size != 0 && instance.num_nodes() <= 200 && (report.instance_type & InstanceType::Graph as u32) != 0;
 
             if use_ilp {
                 let before = Instant::now();
@@ -369,11 +369,19 @@ pub fn solve(
         return Ok((Vec::new(), report));
     }
 
+    let instance_type = instance.get_instance_type();
+    info!("Instance has type: {:#b}", instance_type);
+
+    let mut hard_instance : bool = instance.is_hard_instance();
+    info!("Is instance hard? {}", hard_instance);
+
+    report.instance_type = instance_type;
+
     let mut initial_hs = Vec::new();
     let mut global_lower_bound = 0;
     let mut vertex_importance = Vec::new();
 
-    if use_first_lp {
+    if use_first_lp && !hard_instance {
         let before = Instant::now();
         let (lp_bound, mut vertex_importance_lp) = solve_lp(&instance);
         let time_spend_lp = before.elapsed();
@@ -399,15 +407,6 @@ pub fn solve(
         }
     }
 
-
-    let instance_type = instance.get_instance_type();
-    info!("Instance has type: {:#b}", instance_type);
-
-    let mut hard_instance : bool = instance.is_hard_instance();
-
-    info!("Is instance hard? {}", hard_instance);
-
-    report.instance_type = instance_type;
     report.opt = initial_hs.len();
 
     let mut state = State {
@@ -426,7 +425,7 @@ pub fn solve(
     } else {
         let _ = solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
     }
-
+    
     report.runtimes.total = state.solve_start_time.elapsed();
     report.opt = state.minimum_hs.len();
 
