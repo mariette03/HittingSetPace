@@ -335,7 +335,7 @@ impl Instance {
         self.nodes.delete(node.idx());
     }
 
-    pub fn is_node_deleted(&mut self, node: NodeIdx) -> bool {
+    pub fn is_node_deleted(&self, node: NodeIdx) -> bool {
         self.nodes.is_deleted(node.idx())
     }
 

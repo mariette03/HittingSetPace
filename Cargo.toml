@@ -1,13 +1,13 @@
 [package]
-name = "findminhs"
-version = "2.1.0"
-authors = ["David Stangl <david@david-stangl.com>"]
+name = "hitting-som-set-solver"
+version = "0.1.0"
+authors = ["Patrick Steil <patrick.steil@student.kit.edu>", "Mariette Vasen <mariette.vasen@student.kit.edu>"]
 edition = "2021"
 license = "MIT"
-description = "An efficient branch-and-bound solver for hitting set"
-homepage = "https://github.com/Felerius/findminhs"
-repository = "https://github.com/Felerius/findminhs"
-documentation = "https://github.com/Felerius/findminhs"
+description = "An experimental solver for hitting set and/or dominating set in the context of the pace 2025 challenge"
+homepage = "https://github.com/PatrickSteil/HittingSetPace"
+repository = "https://github.com/PatrickSteil/HittingSetPace"
+documentation = "https://github.com/PatrickSteil/HittingSetPace"
 readme = "README.md"
 categories = ["command-line-utilities", "science"]
 keywords = ["hitting-set", "solver", "research"]

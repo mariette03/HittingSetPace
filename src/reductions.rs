@@ -1,6 +1,6 @@
 use crate::{
     data_structures::{subset_trie::SubsetTrie, superset_trie::SupersetTrie},
-    instance::{EdgeIdx, Instance, NodeIdx, InstanceType},
+    instance::{EdgeIdx, Instance, NodeIdx},
     lower_bound::{self, EfficiencyBound, PackingBound},
     report::{GreedyMode, Report, Settings},
     small_indices::{IdxHashSet, SmallIdx},

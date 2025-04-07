@@ -19,6 +19,9 @@ mod reductions;
 mod report;
 mod small_indices;
 mod solve;
+mod strategies;
+mod utils;
+pub(crate) mod lp_solver;
 
 const APP_SETTINGS: &[AppSettings] = &[
     AppSettings::DisableHelpSubcommand,

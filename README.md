@@ -2,7 +2,12 @@
 Patrick Steil (100% of the added coding), Mariette Vasen
 
 ## Installing
-Run `cargo build --release`, which builds the main executable in `target/release`.
+Make sure cargo and rust are up-to-date.
+Run `cargo build <--release>`
+
+### Install Dependencies
+Install glpk (you can find it [here](https://www.gnu.org/software/glpk/)). Under ubuntu, you may use ```apt install glpk-utils glpk-doc libglpk-dev```
+
 
 ## Usage
 Use `findminhs solve <hypergraph-file.hgr> <settings-file>`. A `settings.json` file is already in the repo.
