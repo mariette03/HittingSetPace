@@ -4,15 +4,17 @@ use crate::{
     small_indices::SmallIdx,
 };
 use anyhow::{anyhow, ensure, Result};
+use itertools::Itertools;
 use log::{info, trace};
 use serde::Deserialize;
+use serde::Serialize;
+use std::cmp::PartialEq;
 use std::{
     fmt::{self, Display, Write as _},
     io::{BufRead, Write},
     mem,
     time::Instant,
 };
-use serde::Serialize;
 
 create_idx_struct!(pub NodeIdx);
 create_idx_struct!(pub EdgeIdx);
@@ -20,11 +22,11 @@ create_idx_struct!(pub EntryIdx);
 
 #[derive(Debug, Clone, Serialize)]
 pub enum InstanceType {
-    FlatDegree = (1<<0),
-    VariedDegree = (1<<1),
-    Dense = (1<<2),
-    Sparse = (1<<3),
-    Graph = (1<<4),
+    FlatDegree = (1 << 0),
+    VariedDegree = (1 << 1),
+    Dense = (1 << 2),
+    Sparse = (1 << 3),
+    Graph = (1 << 4),
 }
 
 #[derive(Debug)]
@@ -81,6 +83,18 @@ pub struct Instance {
     edges: ContiguousIdxVec<EdgeIdx>,
     node_incidences: Vec<SkipVec<(EdgeIdx, EntryIdx)>>,
     edge_incidences: Vec<SkipVec<(NodeIdx, EntryIdx)>>,
+}
+
+impl PartialEq<NodeIdx> for &NodeIdx {
+    fn eq(&self, other: &NodeIdx) -> bool {
+        self.idx() == other.idx()
+    }
+}
+
+impl PartialEq<EdgeIdx> for &EdgeIdx {
+    fn eq(&self, other: &EdgeIdx) -> bool {
+        self.idx() == other.idx()
+    }
 }
 
 impl Instance {
@@ -211,7 +225,10 @@ impl Instance {
         }
 
         let mut parts = line.split_ascii_whitespace();
-        ensure!(parts.next() == Some("p"), "Expected 'p' at start of problem line");
+        ensure!(
+            parts.next() == Some("p"),
+            "Expected 'p' at start of problem line"
+        );
         ensure!(parts.next() == Some("hs"), "Expected 'hs' in problem line");
         let num_nodes: usize = parts
             .next()
@@ -221,10 +238,7 @@ impl Instance {
             .next()
             .ok_or_else(|| anyhow!("Missing edge count"))?
             .parse()?;
-        ensure!(
-            parts.next().is_none(),
-            "Too many numbers in problem line"
-        );
+        ensure!(parts.next().is_none(), "Too many numbers in problem line");
 
         let instance = Self::load(num_nodes, num_edges, |handler| {
             for _ in 0..num_edges {
@@ -237,13 +251,15 @@ impl Instance {
                         continue;
                     }
 
-                    let node_indices = trimmed
-                        .split_ascii_whitespace()
-                        .map(|s| {
-                            let idx: usize = s.parse()?;
-                            ensure!(idx >= 1 && idx <= num_nodes, "Invalid node index in edge: {}", idx);
-                            Ok(idx - 1)
-                        });
+                    let node_indices = trimmed.split_ascii_whitespace().map(|s| {
+                        let idx: usize = s.parse()?;
+                        ensure!(
+                            idx >= 1 && idx <= num_nodes,
+                            "Invalid node index in edge: {}",
+                            idx
+                        );
+                        Ok(idx - 1)
+                    });
 
                     handler.handle_edge(node_indices)?;
                     break;
@@ -309,6 +325,20 @@ impl Instance {
 
     pub fn node_degree(&self, node: NodeIdx) -> usize {
         self.node_incidences[node.idx()].len()
+    }
+    
+    pub fn adjacent_nodes(&self, node: NodeIdx) -> impl Iterator<Item = NodeIdx> + Clone + '_ {
+        self.node(node)
+            .flat_map(|edge| self.edge(edge).filter(|n| n != node))
+            .sorted()
+            .dedup()
+    }
+
+    pub fn adjacent_edges(&self, edge: EdgeIdx) -> impl Iterator<Item = EdgeIdx> + Clone + '_ {
+        self.edge(edge)
+            .flat_map(|node_idx| self.node(node_idx).filter(|e| e != edge))
+            .sorted()
+            .dedup()
     }
 
     /*
@@ -464,7 +494,7 @@ impl Instance {
 
         let num_nodes = self.num_nodes_total();
         let num_edges = self.num_edges_total();
-        
+
         if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 {
             result |= InstanceType::FlatDegree as u32;
         } else {
@@ -477,7 +507,8 @@ impl Instance {
             result |= InstanceType::Sparse as u32;
         }
 
-        let max_edge_size = self.edges
+        let max_edge_size = self
+            .edges
             .iter()
             .map(|&edge| self.edge_incidences[edge.idx()].len())
             .max()
@@ -490,16 +521,17 @@ impl Instance {
         result
     }
 
-
     fn node_degrees(&self) -> Vec<usize> {
         self.node_incidences.iter().map(|inc| inc.len()).collect()
     }
 
     pub fn show_stats(&self) {
-        let mut degrees: Vec<usize> = self.nodes.iter()
+        let mut degrees: Vec<usize> = self
+            .nodes
+            .iter()
             .map(|&node| self.node_degree(node))
             .collect();
-        
+
         if degrees.is_empty() {
             println!("No nodes available.");
             return;
@@ -554,8 +586,7 @@ impl Instance {
         // Each soft clause is: 1 -<var> 0
         // (i.e. we “prefer” that the node is not chosen).
         for &node in alive_nodes {
-            let var = node_var[node.idx()]
-                .ok_or_else(|| anyhow!("Alive node missing mapping"))?;
+            let var = node_var[node.idx()].ok_or_else(|| anyhow!("Alive node missing mapping"))?;
             writeln!(writer, "1 -{} 0", var)?;
         }
 
@@ -567,8 +598,7 @@ impl Instance {
             let clause_vars: Vec<_> = self
                 .edge(edge)
                 .map(|node| {
-                    node_var[node.idx()]
-                        .ok_or_else(|| anyhow!("Edge contains a deleted node"))
+                    node_var[node.idx()].ok_or_else(|| anyhow!("Edge contains a deleted node"))
                 })
                 .collect::<Result<Vec<_>>>()?;
             ensure!(!clause_vars.is_empty(), "Edge clause is empty");
@@ -590,13 +620,16 @@ impl Instance {
         }
 
         let mean_degree = self.edges.len() as f64 / num_nodes as f64;
-        let variance = self.nodes().iter()
+        let variance = self
+            .nodes()
+            .iter()
             .map(|&node| {
                 let degree = self.node_degree(node) as f64;
                 (degree - mean_degree).powi(2)
             })
-            .sum::<f64>() / num_nodes as f64;
-        
+            .sum::<f64>()
+            / num_nodes as f64;
+
         info!("Variance {}", variance);
         variance
     }
@@ -631,7 +664,10 @@ impl Instance {
         if self.num_nodes() == 0 {
             return 0.0;
         }
-        info!("edge / node {}", self.num_edges() as f64 / self.num_nodes() as f64);
+        info!(
+            "edge / node {}",
+            self.num_edges() as f64 / self.num_nodes() as f64
+        );
 
         self.num_edges() as f64 / self.num_nodes() as f64
     }
