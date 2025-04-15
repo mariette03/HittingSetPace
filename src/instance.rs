@@ -484,6 +484,7 @@ impl Instance {
         Ok(())
     }
 
+    /// degree distribution, diameter, treewidth, große Cliquen/ große Gitter?
     pub fn get_instance_type(&self) -> u32 {
         let mut result = 0;
 
@@ -495,7 +496,7 @@ impl Instance {
         let num_nodes = self.num_nodes_total();
         let num_edges = self.num_edges_total();
 
-        if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 {
+        if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 { // magic numbers TODO
             result |= InstanceType::FlatDegree as u32;
         } else {
             result |= InstanceType::VariedDegree as u32;
