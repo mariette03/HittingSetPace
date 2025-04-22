@@ -1,5 +1,5 @@
 [package]
-name = "hitting-som-set-solver"
+name = "hitdomsolver"
 version = "0.1.0"
 authors = ["Patrick Steil <patrick.steil@student.kit.edu>", "Mariette Vasen <mariette.vasen@student.kit.edu>"]
 edition = "2021"
@@ -28,6 +28,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 structopt = "0.3"
 itertools = "0.14.0"
+rustworkx-core = "0.16"
+csv = "1.3"
 
 [profile.release]
 lto = true

@@ -11,6 +11,7 @@ use std::{
     time::Instant,
 };
 use structopt::{clap::AppSettings, StructOpt};
+use crate::analysis::utils::graph_data_report;
 
 mod data_structures;
 mod instance;
@@ -22,6 +23,7 @@ mod solve;
 mod strategies;
 mod utils;
 pub(crate) mod lp_solver;
+mod analysis;
 
 const APP_SETTINGS: &[AppSettings] = &[
     AppSettings::DisableHelpSubcommand,
@@ -37,6 +39,9 @@ enum CliOpts {
     /// Run the solver on a given hypergraph
     Solve(SolveOpts),
 
+    /// Analysis the given (hyper)graph
+    Analysis(AnalysisOpts),
+    
     /// Convert a hypergraph into an equivalent ILP
     Ilp(IlpOpts),
 }
@@ -63,6 +68,12 @@ impl CommonOpts {
         //     Instance::load_from_text(reader)
         // }
     }
+}
+
+#[derive(Debug, StructOpt)]
+struct AnalysisOpts{
+    #[structopt(flatten)]
+    common: CommonOpts,
 }
 
 #[derive(Debug, StructOpt)]
@@ -104,6 +115,7 @@ struct SolveOpts {
 }
 
 fn solve(opts: SolveOpts) -> Result<()> {
+    debug!("Solving...");
     let file_name = opts
         .common
         .hypergraph
@@ -141,6 +153,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
 }
 
 fn convert_to_ilp(opts: IlpOpts) -> Result<()> {
+    debug!("get ILP formulation ...");
     let mut instance = opts.common.load_instance()?;
 
     if opts.reduced {
@@ -161,6 +174,21 @@ fn convert_to_ilp(opts: IlpOpts) -> Result<()> {
     instance.export_as_ilp(stdout.lock())
 }
 
+fn instance_analysis(opts: AnalysisOpts) -> Result<()> {
+    debug!("analyse instance ...");
+    let file_name = opts
+        .common
+        .hypergraph
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| anyhow!("File name can't be extracted"))?
+        .to_string();
+    let instance = opts.common.load_instance()?;
+    // Ok(graph_data_report(&instance, file_name.as_str())?)
+    graph_data_report(&instance, file_name.as_str())?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::new().filter_or("FINDMINHS_LOG", "info"))
         .format_timestamp_millis()
@@ -170,5 +198,6 @@ fn main() -> Result<()> {
     match opts {
         CliOpts::Solve(solve_opts) => solve(solve_opts),
         CliOpts::Ilp(ilp_opts) => convert_to_ilp(ilp_opts),
+        CliOpts::Analysis(analysis_opts) => instance_analysis(analysis_opts),
     }
 }

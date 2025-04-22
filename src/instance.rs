@@ -4,11 +4,16 @@ use crate::{
     small_indices::SmallIdx,
 };
 use anyhow::{anyhow, ensure, Result};
-use itertools::Itertools;
-use log::{info, trace};
+use itertools::{all, Itertools};
+use log::{debug, info, trace};
+use rustworkx_core::petgraph::dot::{Config, Dot};
+use rustworkx_core::petgraph::graph::UnGraph;
+use rustworkx_core::petgraph::Graph;
+use rustworkx_core::planar::is_planar;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cmp::PartialEq;
+use std::collections::VecDeque;
 use std::{
     fmt::{self, Display, Write as _},
     io::{BufRead, Write},
@@ -229,7 +234,9 @@ impl Instance {
             parts.next() == Some("p"),
             "Expected 'p' at start of problem line"
         );
-        ensure!(parts.next() == Some("hs"), "Expected 'hs' in problem line");
+        // ensure!(parts.next() == Some("hs"), "Expected 'hs' in problem line");
+        let instance_typ = parts.next().unwrap();
+        debug!("Read: {instance_typ:?}");
         let num_nodes: usize = parts
             .next()
             .ok_or_else(|| anyhow!("Missing node count"))?
@@ -242,28 +249,25 @@ impl Instance {
 
         let instance = Self::load(num_nodes, num_edges, |handler| {
             for _ in 0..num_edges {
-                loop {
-                    line.clear();
-                    reader.read_line(&mut line)?;
+                line.clear();
+                reader.read_line(&mut line)?;
 
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with('c') {
-                        continue;
-                    }
-
-                    let node_indices = trimmed.split_ascii_whitespace().map(|s| {
-                        let idx: usize = s.parse()?;
-                        ensure!(
-                            idx >= 1 && idx <= num_nodes,
-                            "Invalid node index in edge: {}",
-                            idx
-                        );
-                        Ok(idx - 1)
-                    });
-
-                    handler.handle_edge(node_indices)?;
-                    break;
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('c') {
+                    continue;
                 }
+
+                let node_indices = trimmed.split_ascii_whitespace().map(|s| {
+                    let idx: usize = s.parse()?;
+                    ensure!(
+                        idx >= 1 && idx <= num_nodes,
+                        "Invalid node index in edge: {}",
+                        idx
+                    );
+                    Ok(idx - 1)
+                });
+
+                handler.handle_edge(node_indices)?;
             }
             Ok(())
         })?;
@@ -313,6 +317,16 @@ impl Instance {
             .map(|(_, (node, _))| *node)
     }
 
+    pub fn is_simple(&self) -> bool {
+        all(self.edges().iter(), |e| self.edge_size(*e) <= 2)
+    }
+
+    pub fn simple_edge(&self, edge: EdgeIdx) -> (NodeIdx, NodeIdx) {
+        assert_eq!(self.edge_incidences[edge.idx()].len(), 2);
+        let mut iter = self.edge(edge);
+        (iter.next().unwrap(), iter.next().unwrap())
+    }
+
     /// Alive nodes in the instance, in arbitrary order.
     pub fn nodes(&self) -> &[NodeIdx] {
         &self.nodes
@@ -326,7 +340,7 @@ impl Instance {
     pub fn node_degree(&self, node: NodeIdx) -> usize {
         self.node_incidences[node.idx()].len()
     }
-    
+
     pub fn adjacent_nodes(&self, node: NodeIdx) -> impl Iterator<Item = NodeIdx> + Clone + '_ {
         self.node(node)
             .flat_map(|edge| self.edge(edge).filter(|n| n != node))
@@ -683,5 +697,106 @@ impl Instance {
         let sparse_graph = edge_node_ratio < 1.5;
 
         low_variance && low_entropy && sparse_graph
+    }
+
+    pub fn bfs(&self, start: NodeIdx) -> Vec<usize> {
+        let infty = self.num_nodes() + 5;
+        let max_depth = infty; // for later uses when we want to restrict this
+        let mut dists = vec![infty; self.num_nodes()];
+        dists[start.idx()] = 0;
+
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+
+        while let Some(node) = queue.pop_front() {
+            if dists[node.idx()] >= max_depth {
+                continue;
+            }
+            for edge in self.node(node) {
+                for neighbor in self.edge(edge) {
+                    if dists[neighbor.idx()] > dists[node.idx()] + 1 {
+                        dists[neighbor.idx()] = dists[node.idx()] + 1;
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+        dists
+    }
+
+    /// n x BFS implementation
+    pub fn get_dist_matrix(&self) -> Vec<Vec<usize>> {
+        let mut result: Vec<Vec<usize>> = Vec::new();
+        for i in self.nodes() {
+            let dists_i = self.bfs(*i);
+            result.push(dists_i);
+        }
+        result
+    }
+
+    /// we may want to call this library
+    fn into_petgraph(&self) -> UnGraph<u32, ()> {
+        let edges: Vec<(_, _)> = self
+            .edges()
+            .iter()
+            .map(|edge_idx| {
+                let simple_edge = self.simple_edge(*edge_idx);
+                (simple_edge.0.idx() as u32, simple_edge.1.idx() as u32)
+            })
+            .collect();
+        UnGraph::<u32, ()>::from_edges(edges)
+    }
+
+    fn from_petgraph(petgraph: &Graph<u32, ()>) -> Self {
+        let mut adj_list: Vec<Vec<NodeIdx>> = Vec::new();
+        for node in petgraph.node_indices() {
+            let neighbors = petgraph
+                .neighbors(node)
+                .map(|x| NodeIdx(x.index() as u32))
+                .collect();
+            adj_list.push(neighbors);
+        }
+
+        // let mut node_incidences: Vec<_> = node_degrees
+        //     .iter()
+        //     .map(|&len| SkipVec::with_len(len))
+        //     .collect();
+        // let mut rem_node_degrees = node_degrees;
+        // for (edge, incidences) in edge_incidences.iter_mut().enumerate() {
+        //     let edge = EdgeIdx::from(edge);
+        //     for (edge_entry_idx, edge_entry) in incidences.iter_mut() {
+        //         let node = edge_entry.0.idx();
+        //         let node_entry_idx = node_incidences[node].len() - rem_node_degrees[node];
+        //         rem_node_degrees[node] -= 1;
+        //         edge_entry.1 = EntryIdx::from(node_entry_idx);
+        //         node_incidences[node][node_entry_idx] = (edge, EntryIdx::from(edge_entry_idx));
+        //     }
+        // }
+        todo!()
+    }
+
+    ///
+    pub fn to_graphviz(&self) -> String {
+        format!(
+            "{:?}",
+            Dot::with_config(&self.into_petgraph(), &[Config::EdgeNoLabel, Config::NodeIndexLabel])
+        )
+    }
+
+    // call the petgraph library
+    pub fn is_planar(&self) -> bool {
+        is_planar(&self.into_petgraph())
+    }
+
+    pub fn decompose_connected_components(&self) -> Vec<Instance> {
+        todo!()
+    }
+
+    pub fn decompose_bridges(&self) -> (Vec<EdgeIdx>, Vec<Instance>) {
+        todo!()
+    }
+
+    pub fn decompose_cut(&self) -> (Vec<NodeIdx>, Vec<Instance>) {
+        todo!()
     }
 }
