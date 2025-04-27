@@ -20,6 +20,7 @@ use std::{
     mem,
     time::Instant,
 };
+use rustworkx_core::petgraph::algo::connected_components;
 
 create_idx_struct!(pub NodeIdx);
 create_idx_struct!(pub EdgeIdx);
@@ -700,7 +701,7 @@ impl Instance {
     }
 
     pub fn bfs(&self, start: NodeIdx) -> Vec<usize> {
-        let infty = self.num_nodes() + 5;
+        let infty = usize::MAX;
         let max_depth = infty; // for later uses when we want to restrict this
         let mut dists = vec![infty; self.num_nodes()];
         dists[start.idx()] = 0;
@@ -735,7 +736,7 @@ impl Instance {
     }
 
     /// we may want to call this library
-    fn into_petgraph(&self) -> UnGraph<u32, ()> {
+    pub fn into_petgraph(&self) -> UnGraph<u32, ()> {
         let edges: Vec<(_, _)> = self
             .edges()
             .iter()
@@ -775,7 +776,7 @@ impl Instance {
         todo!()
     }
 
-    ///
+    /// get graphviz visualisation
     pub fn to_graphviz(&self) -> String {
         format!(
             "{:?}",
@@ -788,7 +789,8 @@ impl Instance {
         is_planar(&self.into_petgraph())
     }
 
-    pub fn decompose_connected_components(&self) -> Vec<Instance> {
+    pub fn decompose_connected_components(&self) -> Vec<Instance> {  
+        connected_components(&self.into_petgraph());
         todo!()
     }
 

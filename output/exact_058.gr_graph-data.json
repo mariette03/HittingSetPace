@@ -1,0 +1,10 @@
+{
+  "name": "exact_058.gr",
+  "#nodes": 2671,
+  "#edges": 3964,
+  "#CCs": 5,
+  "#low_degree_nodes": 0,
+  "#high_degree_nodes": 4,
+  "degrees": "[[1,94],[2,671],[3,1138],[4,762],[5,6]]",
+  "apx-diameter": 71
+}

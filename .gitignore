@@ -2,3 +2,7 @@ target/*
 benchmark/*
 Pipfile*
 */.idea/*
+venv/*
+
+# ignore graphviz files (easy to compute yourself)
+*.dot

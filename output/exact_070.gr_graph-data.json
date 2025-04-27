@@ -1,0 +1,10 @@
+{
+  "name": "exact_070.gr",
+  "#nodes": 5516,
+  "#edges": 7578,
+  "#CCs": 44,
+  "#low_degree_nodes": 0,
+  "#high_degree_nodes": 4,
+  "degrees": "[[1,292],[2,1605],[3,2850],[4,745],[5,20],[6,4]]",
+  "apx-diameter": 124
+}

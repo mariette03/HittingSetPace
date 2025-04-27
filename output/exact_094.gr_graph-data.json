@@ -1,0 +1,10 @@
+{
+  "name": "exact_094.gr",
+  "#nodes": 4032,
+  "#edges": 5592,
+  "#CCs": 21,
+  "#low_degree_nodes": 0,
+  "#high_degree_nodes": 4,
+  "degrees": "[[1,249],[2,1277],[3,1677],[4,802],[5,20],[6,7]]",
+  "apx-diameter": 130
+}
