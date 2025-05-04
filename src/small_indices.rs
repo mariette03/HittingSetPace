@@ -56,7 +56,7 @@ macro_rules! create_idx_struct {
             ::serde::Deserialize,
         )]
         #[serde(transparent)]
-        $vis struct $name(u32);
+        $vis struct $name(pub u32);
 
         impl $crate::small_indices::SmallIdx for $name {
             #[allow(dead_code)]
