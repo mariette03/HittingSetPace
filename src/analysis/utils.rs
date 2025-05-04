@@ -5,6 +5,7 @@ use std::cmp::{max, max_by_key};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 
 pub fn get_degree_distribution(instance: &Instance) -> Vec<(usize, usize)> {
     let mut degrees = instance
@@ -99,7 +100,11 @@ pub fn pet_functionality(g: UnGraph<u32, ()>) {
 }
 
 /// Generates a report of the graph data in JSON format. Not very performant, but should suffice
-pub fn graph_data_report(instance: &Instance, filename: &str) -> Result<String, std::io::Error> {
+pub fn graph_data_report(
+    instance: &Instance,
+    filename: &str,
+    additional_info: Option<String>,
+) -> Result<String, std::io::Error> {
     let mut graphviz = File::create(format!("output/{filename}_graphviz.dot"))?;
     graphviz.write_all(instance.to_graphviz().as_bytes())?;
 
@@ -137,10 +142,14 @@ pub fn graph_data_report(instance: &Instance, filename: &str) -> Result<String, 
     //     serde_json::to_string(&centrality_distribution(instance))?,
     // );
 
-    output.insert(
-        "apx-diameter".to_string(),
-        json!(apx_diameter(instance).1)
-    );
+    output.insert("apx-diameter".to_string(), json!(apx_diameter(instance).1));
+
+    if let Some(info) = additional_info {
+        output.insert(
+            "additional_info".to_string(),
+            json!(info),
+        );
+    }
 
     let json = serde_json::to_string_pretty(&Value::Object(output))?;
     file.write_all(json.as_bytes())?;

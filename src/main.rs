@@ -10,9 +10,12 @@ use std::{
     path::PathBuf,
     time::Instant,
 };
+use std::ffi::OsString;
+use serde_json::{json, Map, Value};
 use structopt::{clap::AppSettings, StructOpt};
 use crate::analysis::utils::graph_data_report;
 
+mod ds_instance;
 mod data_structures;
 mod instance;
 mod lower_bound;
@@ -24,6 +27,7 @@ mod strategies;
 mod utils;
 pub(crate) mod lp_solver;
 mod analysis;
+mod hs_instance;
 
 const APP_SETTINGS: &[AppSettings] = &[
     AppSettings::DisableHelpSubcommand,
@@ -39,9 +43,9 @@ enum CliOpts {
     /// Run the solver on a given hypergraph
     Solve(SolveOpts),
 
-    /// Analysis the given (hyper)graph
+    /// Analysis of the given (hyper)graph
     Analysis(AnalysisOpts),
-    
+
     /// Convert a hypergraph into an equivalent ILP
     Ilp(IlpOpts),
 }
@@ -71,9 +75,21 @@ impl CommonOpts {
 }
 
 #[derive(Debug, StructOpt)]
-struct AnalysisOpts{
+struct AnalysisOpts {
     #[structopt(flatten)]
     common: CommonOpts,
+
+    /// Solver settings
+    #[structopt(short, long, parse(from_os_str), value_name = "settings-file")]
+    settings: Option<PathBuf>,
+
+    /// Write the final hitting set to this file as a json array
+    #[structopt(short, long, parse(from_os_str), value_name = "solution-file")]
+    solution: Option<PathBuf>,
+
+    /// Write a detailed statistics report to this file formatted as json
+    #[structopt(short, long, parse(from_os_str), value_name = "report-file")]
+    report: Option<PathBuf>,
 }
 
 #[derive(Debug, StructOpt)]
@@ -114,6 +130,17 @@ struct SolveOpts {
     report: Option<PathBuf>,
 }
 
+impl SolveOpts {
+    fn new(common: CommonOpts, settings: PathBuf, solution: Option<PathBuf>, report: Option<PathBuf>) -> Self {
+        SolveOpts {
+            common,
+            settings,
+            solution,
+            report,
+        }
+    }
+}
+
 fn solve(opts: SolveOpts) -> Result<()> {
     debug!("Solving...");
     let file_name = opts
@@ -135,7 +162,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
     // PaceChal Output
     print!("{}\n", final_hs.len());
     for h in &final_hs {
-        print!("{}\n", ((usize::from(*h)) +1));
+        print!("{}\n", ((usize::from(*h)) + 1));
     }
 
     if let Some(solution_file) = opts.solution {
@@ -185,7 +212,23 @@ fn instance_analysis(opts: AnalysisOpts) -> Result<()> {
         .to_string();
     let instance = opts.common.load_instance()?;
     // Ok(graph_data_report(&instance, file_name.as_str())?)
-    graph_data_report(&instance, file_name.as_str())?;
+
+    let solver_info = match (opts.settings, opts.solution, opts.report) {
+        (Some(settings_path), Some(solution_path), Some(report_path)) => {
+            debug!("running solver");
+            let mut additional_info = Map::new();
+            additional_info.insert("settings_path".to_string(), json!(settings_path));
+            additional_info.insert("solution_path".to_string(), json!(solution_path));
+            additional_info.insert("report_path".to_string(), json!(report_path));
+            solve(SolveOpts::new(
+                opts.common, settings_path, Some(solution_path), Some(report_path),
+            ))?;
+            Some(serde_json::to_string_pretty(&Value::Object(additional_info))?)
+        }
+        _ => None
+    };
+
+    graph_data_report(&instance, file_name.as_str(), solver_info)?;
     Ok(())
 }
 

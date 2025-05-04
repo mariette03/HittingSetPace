@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{anyhow, ensure, Result};
 use itertools::{all, Itertools};
 use log::{debug, info, trace};
+use rustworkx_core::petgraph::algo::connected_components;
 use rustworkx_core::petgraph::dot::{Config, Dot};
 use rustworkx_core::petgraph::graph::UnGraph;
 use rustworkx_core::petgraph::Graph;
@@ -20,23 +21,25 @@ use std::{
     mem,
     time::Instant,
 };
-use rustworkx_core::petgraph::algo::connected_components;
 
 create_idx_struct!(pub NodeIdx);
 create_idx_struct!(pub EdgeIdx);
 create_idx_struct!(pub EntryIdx);
 
-#[derive(Debug, Clone, Serialize)]
-pub enum InstanceType {
-    FlatDegree = (1 << 0),
-    VariedDegree = (1 << 1),
-    Dense = (1 << 2),
-    Sparse = (1 << 3),
-    Graph = (1 << 4),
+impl PartialEq<NodeIdx> for &NodeIdx {
+    fn eq(&self, other: &NodeIdx) -> bool {
+        self.idx() == other.idx()
+    }
+}
+
+impl PartialEq<EdgeIdx> for &EdgeIdx {
+    fn eq(&self, other: &EdgeIdx) -> bool {
+        self.idx() == other.idx()
+    }
 }
 
 #[derive(Debug)]
-struct CompressedIlpName<T>(T);
+pub struct CompressedIlpName<T>(pub T);
 
 impl<T: SmallIdx> Display for CompressedIlpName<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -48,6 +51,127 @@ impl<T: SmallIdx> Display for CompressedIlpName<T> {
         }
         Ok(())
     }
+}
+
+pub trait GeneralInstance {
+    /// load an instance given from a bufreader to a (hyper)graph file as given in the specification
+    fn load_from_buffer(reader: impl BufRead) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// build a new instance by the charasteric vetor new_nodes. How to handle edges is up to implementation
+    fn partial_instance(&self, new_nodes: &Vec<bool>) -> Self
+    where
+        Self: Sized;
+
+    /// Live nodes in the instance, in arbitrary order.
+    fn nodes(&self) -> &[NodeIdx];
+    fn num_nodes(&self) -> usize;
+    fn adjacent_nodes(&self, node: NodeIdx) -> impl Iterator<Item = NodeIdx> + Clone + '_;
+    fn delete_node(&mut self, node_idx: NodeIdx);
+    fn delete_edge(&mut self, edge_idx: EdgeIdx);
+    fn restore_node(&mut self, node_idx: NodeIdx);
+    fn restore_edge(&mut self, edge_idx: EdgeIdx);
+    fn is_node_deleted(&self, node: NodeIdx) -> bool;
+    fn export_to_ilp(&self, writer: impl Write) -> Result<()>;
+    fn export_to_max_sat(&self, writer: impl Write) -> Result<()>;
+
+    fn decompose_connected_components(&self) -> Option<Vec<Self>>
+    where
+        Self: Sized,
+    {
+        let mut new_instances: Vec<Self> = Vec::new();
+
+        let mut allowed_vertices = vec![false; self.num_nodes()];
+        let mut visited = vec![false; self.num_nodes()];
+        let mut single_component = true;
+        
+        for node in 0..visited.len() {
+            if visited[node] {
+                continue;
+            };
+
+            let bfs_dists = self.bfs(NodeIdx(node as u32));
+            for (vert, dist) in bfs_dists.iter().enumerate() {
+                single_component &= (*dist < self.num_nodes());
+                allowed_vertices[vert] = (*dist < self.num_nodes());
+                visited[vert] |= (*dist < self.num_nodes());
+            }
+            if single_component {
+                return None;
+            } 
+            new_instances.push(self.partial_instance(&allowed_vertices));
+        }
+
+        Some(new_instances)
+    }
+
+    fn decompose_bridges(&self) -> (Vec<EdgeIdx>, Vec<Self>)
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+
+    fn decompose_cut(&self) -> (Vec<NodeIdx>, Vec<Self>)
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+
+    /// a standard BFS implementation returning the dist-array
+    fn bfs(&self, start: NodeIdx) -> Vec<usize> {
+        let infty = usize::MAX;
+        let max_depth = infty; // for later uses when we want to restrict this
+        let mut dists = vec![infty; self.num_nodes()];
+        dists[start.idx()] = 0;
+
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+
+        while let Some(node) = queue.pop_front() {
+            if dists[node.idx()] >= max_depth {
+                continue;
+            }
+            for neighbor in self.adjacent_nodes(node) {
+                if dists[neighbor.idx()] > dists[node.idx()] + 1 {
+                    dists[neighbor.idx()] = dists[node.idx()] + 1;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        dists
+    }
+
+    /// n x BFS implementation
+    fn get_dist_matrix(&self) -> Vec<Vec<usize>> {
+        let mut result: Vec<Vec<usize>> = Vec::new();
+        for i in self.nodes() {
+            let dists_i = self.bfs(*i);
+            result.push(dists_i);
+        }
+        result
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum InstanceType {
+    FlatDegree = (1 << 0),
+    VariedDegree = (1 << 1),
+    Dense = (1 << 2),
+    Sparse = (1 << 3),
+    Graph = (1 << 4),
+}
+
+pub trait AnalysisInstance {
+    fn get_instance_type(&self) -> u32;
+    fn node_degrees(&self) -> Vec<usize>;
+    fn show_stats(&self);
+    fn degree_variance(&self) -> f64;
+    fn degree_entropy(&self) -> f64;
+    fn edge_to_node_ratio(&self) -> f64;
+    fn is_hard_instance(&self) -> bool;
 }
 
 #[derive(Debug)]
@@ -77,30 +201,12 @@ impl ParsedEdgeHandler {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct JsonInstance {
-    num_nodes: usize,
-    edges: Vec<Vec<usize>>,
-}
-
 #[derive(Clone, Debug)]
 pub struct Instance {
     nodes: ContiguousIdxVec<NodeIdx>,
     edges: ContiguousIdxVec<EdgeIdx>,
     node_incidences: Vec<SkipVec<(EdgeIdx, EntryIdx)>>,
     edge_incidences: Vec<SkipVec<(NodeIdx, EntryIdx)>>,
-}
-
-impl PartialEq<NodeIdx> for &NodeIdx {
-    fn eq(&self, other: &NodeIdx) -> bool {
-        self.idx() == other.idx()
-    }
-}
-
-impl PartialEq<EdgeIdx> for &EdgeIdx {
-    fn eq(&self, other: &EdgeIdx) -> bool {
-        self.idx() == other.idx()
-    }
 }
 
 impl Instance {
@@ -142,76 +248,6 @@ impl Instance {
             edge_incidences,
         })
     }
-
-    /*
-    pub fn load_from_text(mut reader: impl BufRead) -> Result<Self> {
-        let time_before = Instant::now();
-        let mut line = String::new();
-
-        reader.read_line(&mut line)?;
-        let mut numbers = line.split_ascii_whitespace().map(str::parse);
-        let num_nodes = numbers
-            .next()
-            .ok_or_else(|| anyhow!("Missing node count"))??;
-        let num_edges = numbers
-            .next()
-            .ok_or_else(|| anyhow!("Missing edge count"))??;
-        ensure!(
-            numbers.next().is_none(),
-            "Too many numbers in first input line"
-        );
-
-        let instance = Self::load(num_nodes, num_edges, |handler| {
-            for _ in 0..num_edges {
-                line.clear();
-                reader.read_line(&mut line)?;
-                let mut numbers = line
-                    .split_ascii_whitespace()
-                    .map(|s| s.parse::<usize>().map_err(Error::from));
-                // Skip degree
-                numbers
-                    .next()
-                    .ok_or_else(|| anyhow!("empty edge line in input, expected degree"))??;
-                handler.handle_edge(numbers)?;
-            }
-
-            Ok(())
-        })?;
-
-        info!(
-            "Loaded text instance with {} nodes, {} edges in {:.2?}",
-            num_nodes,
-            num_edges,
-            time_before.elapsed(),
-        );
-        Ok(instance)
-    }
-
-    pub fn load_from_json(mut reader: impl BufRead) -> Result<Self> {
-        let time_before = Instant::now();
-
-        // Usually faster for large inputs, see https://github.com/serde-rs/json/issues/160
-        let mut text = String::new();
-        reader.read_to_string(&mut text)?;
-        let JsonInstance { num_nodes, edges } = serde_json::from_str(&text)?;
-
-        let num_edges = edges.len();
-        let instance = Self::load(num_nodes, num_edges, |handler| {
-            for edge in edges {
-                handler.handle_edge(edge.into_iter().map(Ok))?;
-            }
-            Ok(())
-        })?;
-
-        info!(
-            "Loaded json instance with {} nodes, {} edges in {:.2?}",
-            num_nodes,
-            num_edges,
-            time_before.elapsed(),
-        );
-        Ok(instance)
-    }
-    */
 
     /// Loads a hypergraph instance from a DIMACS HGR file.
     pub fn load_from_hgr(mut reader: impl BufRead) -> Result<Self> {
@@ -282,6 +318,54 @@ impl Instance {
 
         Ok(instance)
     }
+
+    pub fn partial_instance(&self, copied_vertices: Vec<bool>) -> (Self, Vec<(NodeIdx, NodeIdx)>) {
+        todo!();
+        // assert_eq!(copied_vertices.len(), self.num_nodes());
+        // let mut matching = Vec::new(); // new to old
+        // let mut new_idx = 0;
+        // for old_idx in 0..copied_vertices.len() {
+        //     if copied_vertices[old_idx] {
+        //         matching.push((NodeIdx::from(new_idx), NodeIdx::from(old_idx)));
+        //         new_idx += 1;
+        //     }
+        // }
+        //
+        // let num_nodes = copied_vertices.iter().filter(|&&x| x).count();
+        //     let mut handler = ParsedEdgeHandler {
+        //         edge_incidences: Vec::with_capacity(num_edges),
+        //         node_degrees: vec![0; num_nodes],
+        //     };
+        // //read_edges(&mut handler)?;
+        // let ParsedEdgeHandler {
+        //     mut edge_incidences,
+        //     node_degrees,
+        // } = handler;
+        //
+        // let mut node_incidences: Vec<_> = node_degrees
+        //     .iter()
+        //     .map(|&len| SkipVec::with_len(len))
+        //     .collect();
+        // let mut rem_node_degrees = node_degrees;
+        // for (edge, incidences) in edge_incidences.iter_mut().enumerate() {
+        //     let edge = EdgeIdx::from(edge);
+        //     for (edge_entry_idx, edge_entry) in incidences.iter_mut() {
+        //         let node = edge_entry.0.idx();
+        //         let node_entry_idx = node_incidences[node].len() - rem_node_degrees[node];
+        //         rem_node_degrees[node] -= 1;
+        //         edge_entry.1 = EntryIdx::from(node_entry_idx);
+        //         node_incidences[node][node_entry_idx] = (edge, EntryIdx::from(edge_entry_idx));
+        //     }
+        // }
+        //
+        // Ok(Self {
+        //     nodes: (0..num_nodes).map(NodeIdx::from).collect(),
+        //     edges: (0..num_edges).map(EdgeIdx::from).collect(),
+        //     node_incidences,
+        //     edge_incidences,
+        // })
+    }
+
     pub fn num_edges(&self) -> usize {
         self.edges.len()
     }
@@ -511,7 +595,8 @@ impl Instance {
         let num_nodes = self.num_nodes_total();
         let num_edges = self.num_edges_total();
 
-        if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 { // magic numbers TODO
+        if *max_degree - *min_degree <= 8 && num_edges <= num_nodes * 2 {
+            // magic numbers TODO
             result |= InstanceType::FlatDegree as u32;
         } else {
             result |= InstanceType::VariedDegree as u32;
@@ -780,7 +865,10 @@ impl Instance {
     pub fn to_graphviz(&self) -> String {
         format!(
             "{:?}",
-            Dot::with_config(&self.into_petgraph(), &[Config::EdgeNoLabel, Config::NodeIndexLabel])
+            Dot::with_config(
+                &self.into_petgraph(),
+                &[Config::EdgeNoLabel, Config::NodeIndexLabel]
+            )
         )
     }
 
@@ -789,7 +877,7 @@ impl Instance {
         is_planar(&self.into_petgraph())
     }
 
-    pub fn decompose_connected_components(&self) -> Vec<Instance> {  
+    pub fn decompose_connected_components(&self) -> Vec<Instance> {
         connected_components(&self.into_petgraph());
         todo!()
     }
