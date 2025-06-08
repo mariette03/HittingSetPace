@@ -68,7 +68,8 @@ pub fn solve(
     let mut global_lower_bound = 0;
     let mut vertex_importance = Vec::new();
 
-    if use_first_lp && !hard_instance {
+    // if use_first_lp && !hard_instance {
+    if use_first_lp {
         let before = Instant::now();
         let (lp_bound, mut vertex_importance_lp) = lp_solver::solve_lp(&instance);
         let time_spend_lp = before.elapsed();
@@ -104,14 +105,14 @@ pub fn solve(
         global_lower_bound: global_lower_bound,
     };
 
-    if hard_instance && (global_lower_bound + 5 < state.minimum_hs.len()) {
+    /*if hard_instance && (global_lower_bound + 5 < state.minimum_hs.len()) {
         let (_ilp_result, ilp_solution) = lp_solver::solve_ilp_exact(&instance);
 
         state.minimum_hs.clear();
         state.minimum_hs.extend(ilp_solution.iter().copied());
-    } else {
+    } else {*/
         let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
-    }
+    // }
     
     report.runtimes.total = state.solve_start_time.elapsed();
     report.opt = state.minimum_hs.len();

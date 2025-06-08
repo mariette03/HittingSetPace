@@ -300,7 +300,7 @@ fn instance_analysis(opts: AnalysisOpts) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::new().filter_or("FINDMINHS_LOG", "warn"))
+    env_logger::Builder::from_env(env_logger::Env::new().filter_or("FINDMINHS_LOG", "info"))
         .format_timestamp_millis()
         .init();
 
