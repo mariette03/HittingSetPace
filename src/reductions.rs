@@ -2,6 +2,7 @@ use crate::{
     data_structures::{subset_trie::SubsetTrie, superset_trie::SupersetTrie},
     instance::{EdgeIdx, Instance, NodeIdx},
     lower_bound::{self, EfficiencyBound, PackingBound},
+    lp_solver,
     report::{GreedyMode, Report, Settings},
     small_indices::{IdxHashSet, SmallIdx},
     solve::State,
@@ -79,18 +80,39 @@ pub enum ReductionResult {
     Finished,
 }
 
-pub fn optimistic_reductions(instance: &mut Instance,
-                             state: &mut State,
-                             vertex_importance: &Vec<f64>) {
-   vertex_importance.iter().enumerate().for_each(
-       |(idx, &importance)| {
-        let node = NodeIdx::from(idx);
-        if importance == 0f64 {
-            ReducedItem::RemovedNode(node).apply(instance, &mut state.partial_hs)
-        } else if importance == 1f64 {
-            ReducedItem::ForcedNode(node).apply(instance, &mut state.partial_hs)
-        } 
-    });
+pub fn optimistic_reductions(
+    instance: &mut Instance,
+    state: &mut State,
+    vertex_importance: &Vec<f64>,
+) {
+    vertex_importance
+        .iter()
+        .enumerate()
+        .for_each(|(idx, &importance)| {
+            let node = NodeIdx::from(idx);
+            if importance == 0f64 {
+                ReducedItem::RemovedNode(node).apply(instance, &mut state.partial_hs);
+            } else if importance == 1f64 {
+                ReducedItem::ForcedNode(node).apply(instance, &mut state.partial_hs);
+            }
+        });
+}
+
+pub fn optimistic_lp_reductions(instance: &mut Instance) -> impl Iterator<Item = ReducedItem> + '_ {
+    let (lp_bound, mut vertex_importance_lp) = lp_solver::solve_lp(&instance);
+    vertex_importance_lp
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, importance)| {
+            let node = NodeIdx::from(idx);
+            if importance == 0f64 {
+                Some(ReducedItem::RemovedNode(node))
+            } else if importance == 1f64 {
+                Some(ReducedItem::ForcedNode(node))
+            } else {
+                None
+            }
+        })
 }
 
 fn find_dominated_nodes(instance: &Instance) -> impl Iterator<Item = ReducedItem> + '_ {
@@ -143,7 +165,10 @@ fn find_discard_and_forced_vertex(instance: &Instance) -> impl Iterator<Item = R
         let edge = edges.next().unwrap();
         let edge_nodes: Vec<_> = instance.edge(edge).collect();
 
-        if edge_nodes.iter().any(|&w| w != node && !marked_for_removal.contains(&w)) {
+        if edge_nodes
+            .iter()
+            .any(|&w| w != node && !marked_for_removal.contains(&w))
+        {
             marked_for_removal.insert(node);
         } else {
             forced_nodes.insert(node);
@@ -175,14 +200,15 @@ fn find_discard_vertex(instance: &Instance) -> impl Iterator<Item = ReducedItem>
         let edge = edges.next().unwrap();
         let edge_nodes: Vec<_> = instance.edge(edge).collect();
 
-        if edge_nodes.iter().any(|&w| w != node && !marked_for_removal.contains(&w)) {
+        if edge_nodes
+            .iter()
+            .any(|&w| w != node && !marked_for_removal.contains(&w))
+        {
             marked_for_removal.insert(node);
         }
     }
 
-    marked_for_removal
-        .into_iter()
-        .map(ReducedItem::RemovedNode)
+    marked_for_removal.into_iter().map(ReducedItem::RemovedNode)
 }
 
 fn find_forced_nodes(instance: &Instance) -> impl Iterator<Item = ReducedItem> {
@@ -294,15 +320,23 @@ pub fn calc_greedy_approximation_from_vec(instance: &Instance, importance: &[f64
     }
 
     let mut node_queue = BinaryHeap::from(
-        instance.nodes().into_iter().map(|&node| NodeEntry {
-            importance: importance[node.idx()] * (instance.node_degree(node) as f64),
-            // importance: importance[node.idx()],
-            node,
-        }).collect::<Vec<_>>()
+        instance
+            .nodes()
+            .into_iter()
+            .map(|&node| NodeEntry {
+                importance: importance[node.idx()] * (instance.node_degree(node) as f64),
+                // importance: importance[node.idx()],
+                node,
+            })
+            .collect::<Vec<_>>(),
     );
 
     let mut hs = Vec::new();
-    while let Some(NodeEntry { importance: _, node }) = node_queue.pop() {
+    while let Some(NodeEntry {
+        importance: _,
+        node,
+    }) = node_queue.pop()
+    {
         if instance.node(node).all(|edge| hit[edge.idx()]) {
             continue;
         }
@@ -325,11 +359,15 @@ pub fn calc_greedy_approximation(instance: &Instance) -> Vec<NodeIdx> {
 
     let mut node_degrees = vec![0; instance.num_nodes_total()];
     let mut node_queue = BinaryHeap::from(
-        instance.nodes().into_iter().map(|&node| {
-            let degree = instance.node_degree(node);
-            node_degrees[node.idx()] = degree;
-            (degree, node)
-        }).collect::<Vec<_>>()
+        instance
+            .nodes()
+            .into_iter()
+            .map(|&node| {
+                let degree = instance.node_degree(node);
+                node_degrees[node.idx()] = degree;
+                (degree, node)
+            })
+            .collect::<Vec<_>>(),
     );
 
     let mut hs = Vec::new();

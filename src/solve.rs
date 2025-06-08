@@ -111,11 +111,11 @@ pub fn solve(
         state.minimum_hs.clear();
         state.minimum_hs.extend(ilp_solution.iter().copied());
     } else {*/
-    let be_optimistic = true;
-    if be_optimistic {
-        optimistic_reductions(&mut instance, &mut state, &vertex_importance);
-    }
-    
+    // let be_optimistic = true;
+    // if be_optimistic {
+    //     optimistic_reductions(&mut instance, &mut state, &vertex_importance);
+    // }
+
     let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
     // }
     
