@@ -116,7 +116,7 @@ pub fn solve(
     //     optimistic_reductions(&mut instance, &mut state, &vertex_importance);
     // }
 
-    let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
+    let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance, 0);
     // }
     
     report.runtimes.total = state.solve_start_time.elapsed();

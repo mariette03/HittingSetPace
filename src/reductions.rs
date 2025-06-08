@@ -681,6 +681,16 @@ pub fn reduce(
             break ReductionResult::Finished;
         }
 
+        if reduced_items.len() == unchanged_len && depth % 5 == 0 {
+            run_reduction(
+                &mut reduced_items,
+                &mut report.runtimes.vertex_domination,
+                &mut report.reductions.vertex_dominations_runs,
+                &mut report.reductions.vertex_dominations_vertices_found,
+                || optimistic_lp_reductions(instance),
+            );
+        }
+
         collect_time_info(&mut report.runtimes.applying_reductions, || {
             for reduced_item in &reduced_items[unchanged_len..] {
                 reduced_item.apply(instance, &mut state.partial_hs);
