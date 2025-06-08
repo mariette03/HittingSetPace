@@ -228,20 +228,20 @@ fn solve(opts: SolveOpts) -> Result<()> {
 
 #[cfg(feature = "optilio")]
 fn get_hardcoded_settings() -> Settings {
-    Settings {
-        enable_local_search: true,
+    Settings{
+        enable_local_search: false,
         enable_max_degree_bound: true,
-        enable_sum_degree_bound: true,
-        enable_efficiency_bound: false,
+        enable_sum_degree_bound: false,
+        enable_efficiency_bound: true,
         enable_packing_bound: true,
-        enable_sum_over_packing_bound: false,
-        packing_from_scratch_limit: 100,
+        enable_sum_over_packing_bound: true,
+        packing_from_scratch_limit: 3,
         greedy_mode: GreedyMode::Once, // Never, Once, AlwaysBeforeBounds, AlwaysBeforeExpensiveReductions,
         initial_hitting_set: None,
-        enable_lp_lower_bound: false,
-        ilp_size: 30,
+        enable_lp_lower_bound: true,
+        ilp_size: 100,
         degree_one_removal: true,
-        lp_guided: false,
+        lp_guided: true,
         stop_at: 0,
     }
 }
