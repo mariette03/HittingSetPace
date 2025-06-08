@@ -556,6 +556,17 @@ pub fn reduce(
 
         let unchanged_len = reduced_items.len();
 
+        if depth % 5 == 0 { // optimistic code! 
+            info!("Doing LP optimistic reduction...");
+            run_reduction(
+                &mut reduced_items,
+                &mut report.runtimes.vertex_domination,
+                &mut report.reductions.vertex_dominations_runs,
+                &mut report.reductions.vertex_dominations_vertices_found,
+                || optimistic_lp_reductions(instance),
+            );
+        }
+
         if report.settings.degree_one_removal {
             // Remove degree one vertices which have a neighbour
             run_reduction(
@@ -679,16 +690,6 @@ pub fn reduce(
 
         if reduced_items.len() == unchanged_len {
             break ReductionResult::Finished;
-        }
-
-        if reduced_items.len() == unchanged_len && depth % 5 == 0 {
-            run_reduction(
-                &mut reduced_items,
-                &mut report.runtimes.vertex_domination,
-                &mut report.reductions.vertex_dominations_runs,
-                &mut report.reductions.vertex_dominations_vertices_found,
-                || optimistic_lp_reductions(instance),
-            );
         }
 
         collect_time_info(&mut report.runtimes.applying_reductions, || {
