@@ -90,7 +90,6 @@ impl CommonOpts {
 
     #[cfg(feature = "optilio")]
     fn load_instance(&self) -> Result<Instance> {
-        println!("blatest2");
         let stdin = io::stdin();
         let reader = BufReader::new(stdin.lock());
         Instance::load_from_hgr(reader)
@@ -208,7 +207,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
     for h in &final_hs {
         print!("{}\n", ((usize::from(*h)) + 1));
     }
-
+    
     #[cfg(not(feature = "optilio"))]
     {
         if let Some(solution_file) = opts.solution {

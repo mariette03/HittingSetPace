@@ -634,7 +634,7 @@ impl Instance {
             .collect();
 
         if degrees.is_empty() {
-            println!("No nodes available.");
+            info!("No nodes available.");
             return;
         }
 
@@ -642,7 +642,7 @@ impl Instance {
 
         for percentile in (0..=100).step_by(10) {
             let index = (percentile as f64 / 100.0 * (degrees.len() as f64 - 1.0)).round() as usize;
-            println!("{}% percentile: {}", percentile, degrees[index]);
+            info!("{}% percentile: {}", percentile, degrees[index]);
         }
     }
 
