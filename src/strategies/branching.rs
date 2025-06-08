@@ -110,6 +110,15 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
                     return Status::Continue;
                 }
             }
+            
+            let recalc_vertex_importance = depth % 5 == 0;
+            if recalc_vertex_importance {
+                let new_vertex_importance = crate::utils::compute_vertex_importance(instance);
+                for i in 0..vertex_importance.len() {
+                    vertex_importance[i] = new_vertex_importance[i];
+                }
+            }
+            
             let node = select_vertex(instance, &vertex_importance);
             branch_on(node, instance, state, report, vertex_importance, depth)
         }
