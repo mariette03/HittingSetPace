@@ -99,20 +99,36 @@ pub fn optimistic_reductions(
 }
 
 pub fn optimistic_lp_reductions(instance: &mut Instance) -> impl Iterator<Item = ReducedItem> + '_ {
-    let (lp_bound, mut vertex_importance_lp) = lp_solver::solve_lp(&instance);
-    vertex_importance_lp
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, importance)| {
-            let node = NodeIdx::from(idx);
-            if importance == 0f64 {
-                Some(ReducedItem::RemovedNode(node))
-            } else if importance == 1f64 {
-                Some(ReducedItem::ForcedNode(node))
+    let (lp_bound, vertex_importance_lp) = lp_solver::solve_lp(&instance);
+    info!("A: {}, B: {}", instance.num_nodes(), vertex_importance_lp.len());
+    let res: Vec<_> = instance.nodes().iter().filter_map(
+        | node | {
+            if vertex_importance_lp[node.idx()] == 0f64 {
+                Some(ReducedItem::RemovedNode(*node))
+            } else if vertex_importance_lp[node.idx()] == 1f64 {
+                Some(ReducedItem::ForcedNode(*node))
             } else {
                 None
-            }
-        })
+            }      
+        }
+    ).collect();
+    
+    res.into_iter()
+    
+    // 
+    // vertex_importance_lp
+    //     .into_iter()
+    //     .enumerate()
+    //     .filter_map(|(idx, importance)| {
+    //         let node = NodeIdx::from(idx);
+    //         if importance == 0f64 {
+    //             Some(ReducedItem::RemovedNode(node))
+    //         } else if importance == 1f64 {
+    //             Some(ReducedItem::ForcedNode(node))
+    //         } else {
+    //             None
+    //         }
+    //     })
 }
 
 fn find_dominated_nodes(instance: &Instance) -> impl Iterator<Item = ReducedItem> + '_ {
@@ -556,7 +572,7 @@ pub fn reduce(
 
         let unchanged_len = reduced_items.len();
 
-        if depth % 5 == 0 { // optimistic code! 
+        if depth % 5 == 0 { // optimistic code!
             info!("Doing LP optimistic reduction...");
             run_reduction(
                 &mut reduced_items,
@@ -565,8 +581,14 @@ pub fn reduce(
                 &mut report.reductions.vertex_dominations_vertices_found,
                 || optimistic_lp_reductions(instance),
             );
-        }
 
+            info!("Apply optimistic reduction...");
+            for reduced_item in &reduced_items[unchanged_len..] {
+                reduced_item.apply(instance, &mut state.partial_hs);
+            } 
+        }
+        let unchanged_len = reduced_items.len();
+        
         if report.settings.degree_one_removal {
             // Remove degree one vertices which have a neighbour
             run_reduction(
