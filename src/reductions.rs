@@ -417,6 +417,7 @@ pub fn reduce(
     instance: &mut Instance,
     state: &mut State,
     report: &mut Report,
+    depth: usize
 ) -> (ReductionResult, Reduction) {
     if report.settings.greedy_mode == GreedyMode::Once {
         recalculate_greedy_upper_bound(instance, state, report);

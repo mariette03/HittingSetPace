@@ -13,6 +13,7 @@ pub(crate) fn branch_on(
     state: &mut State,
     report: &mut Report,
     vertex_importance: &mut Vec<f64>,
+    depth: usize
 ) -> Status {
     trace!("Branching on {}", node);
     report.branching_steps += 1;
@@ -20,7 +21,7 @@ pub(crate) fn branch_on(
 
     instance.delete_incident_edges(node);
     state.partial_hs.push(node);
-    let status_with_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance);
+    let status_with_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance, depth+1);
     debug_assert_eq!(state.partial_hs.last().copied(), Some(node));
     state.partial_hs.pop();
     instance.restore_incident_edges(node);
@@ -30,13 +31,13 @@ pub(crate) fn branch_on(
         return Status::Stop;
     }
 
-    let status_without_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance);
+    let status_without_vertex_in_hs = solve_recursive(instance, state, report, vertex_importance, depth+1);
     instance.restore_node(node);
 
     status_without_vertex_in_hs
 }
 
-pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Report, vertex_importance: &mut Vec<f64>) -> Status {
+pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Report, vertex_importance: &mut Vec<f64>, depth: usize) -> Status {
     // let now = Instant::now();
     // if (now - state.last_log_time).as_secs() >= ITERATION_LOG_INTERVAL_SECS {
     //     info!(
@@ -56,7 +57,7 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
         return Status::Continue;
     }
 
-    let (reduction_result, reduction) = reductions::reduce(instance, state, report);
+    let (reduction_result, reduction) = reductions::reduce(instance, state, report, depth);
 
     let status = match reduction_result {
         ReductionResult::Solved => {
@@ -110,7 +111,7 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
                 }
             }
             let node = select_vertex(instance, &vertex_importance);
-            branch_on(node, instance, state, report, vertex_importance)
+            branch_on(node, instance, state, report, vertex_importance, depth)
         }
     };
 
