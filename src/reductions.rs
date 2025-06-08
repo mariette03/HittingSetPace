@@ -99,23 +99,27 @@ pub fn optimistic_reductions(
 }
 
 pub fn optimistic_lp_reductions(instance: &mut Instance) -> impl Iterator<Item = ReducedItem> + '_ {
-    let (lp_bound, vertex_importance_lp) = lp_solver::solve_lp(&instance);
-    info!("A: {}, B: {}", instance.num_nodes(), vertex_importance_lp.len());
-    let res: Vec<_> = instance.nodes().iter().filter_map(
-        | node | {
-            if vertex_importance_lp[node.idx()] == 0f64 {
-                Some(ReducedItem::RemovedNode(*node))
-            } else if vertex_importance_lp[node.idx()] == 1f64 {
-                Some(ReducedItem::ForcedNode(*node))
-            } else {
-                None
-            }      
-        }
-    ).collect();
+    let mut res: Vec<_> = Vec::new();
+    if instance.num_edges() > 0 && instance.num_nodes() > 0 {
+        let (lp_bound, vertex_importance_lp) = lp_solver::solve_lp(&instance);
+        info!("A: {}, B: {}", instance.num_nodes(), vertex_importance_lp.len());
+        res = instance.nodes().iter().filter_map(
+            | node | {
+                if vertex_importance_lp[node.idx()] == 0f64 {
+                    Some(ReducedItem::RemovedNode(*node))
+                } else if vertex_importance_lp[node.idx()] == 1f64 {
+                    Some(ReducedItem::ForcedNode(*node))
+                } else {
+                    None
+                }      
+            }
+        ).collect();
+    }
     
     res.into_iter()
     
     // 
+    // let (lp_bound, vertex_importance_lp) = lp_solver::solve_lp(&instance);
     // vertex_importance_lp
     //     .into_iter()
     //     .enumerate()
