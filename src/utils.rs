@@ -18,3 +18,8 @@ pub fn select_vertex(instance: &Instance, vertex_importance: &[f64]) -> NodeIdx 
         })
         .expect("Branching on an empty instance")
 }
+
+pub fn compute_vertex_importance(instance: &Instance) -> &[f64] {
+    
+    todo!("compute_vertex_importance is not implemented yet");
+}
