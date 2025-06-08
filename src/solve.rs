@@ -9,7 +9,7 @@ use crate::{
 use anyhow::{ensure, Result};
 use log::{debug, info, trace, warn};
 use std::time::Instant;
-
+use crate::reductions::optimistic_reductions;
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -111,7 +111,12 @@ pub fn solve(
         state.minimum_hs.clear();
         state.minimum_hs.extend(ilp_solution.iter().copied());
     } else {*/
-        let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
+    let be_optimistic = true;
+    if be_optimistic {
+        optimistic_reductions(&mut instance, &mut state, &vertex_importance);
+    }
+    
+    let _ = strategies::branching::solve_recursive(&mut instance, &mut state, &mut report, &mut vertex_importance);
     // }
     
     report.runtimes.total = state.solve_start_time.elapsed();

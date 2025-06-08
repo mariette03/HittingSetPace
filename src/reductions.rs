@@ -79,6 +79,20 @@ pub enum ReductionResult {
     Finished,
 }
 
+pub fn optimistic_reductions(instance: &mut Instance,
+                             state: &mut State,
+                             vertex_importance: &Vec<f64>) {
+   vertex_importance.iter().enumerate().for_each(
+       |(idx, &importance)| {
+        let node = NodeIdx::from(idx);
+        if importance == 0f64 {
+            ReducedItem::RemovedNode(node).apply(instance, &mut state.partial_hs)
+        } else if importance == 1f64 {
+            ReducedItem::ForcedNode(node).apply(instance, &mut state.partial_hs)
+        } 
+    });
+}
+
 fn find_dominated_nodes(instance: &Instance) -> impl Iterator<Item = ReducedItem> + '_ {
     let mut nodes = instance.nodes().to_vec();
     nodes.sort_unstable_by_key(|&node| Reverse(instance.node_degree(node)));
