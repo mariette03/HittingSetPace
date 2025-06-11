@@ -17,6 +17,10 @@ const GLP_DB: i32 = 4;   // Double bounded
 
 
 pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
+    if (instance.num_nodes() == 0 || instance.num_edges() == 0) {
+        return (0, vec![0f64; instance.num_nodes_total()])
+    }
+    
     unsafe {
         glpk::glp_term_out(0);
 
@@ -41,7 +45,10 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
             glpk::glp_set_col_bnds(lp, col_idx, GLP_DB, 0.0, 1.0); // each node is chosen (1) or not chosen (0) - or in between
             glpk::glp_set_obj_coef(lp, col_idx, 1.0); // in the objective funciton, all nodes are added up
 
-            total_size += instance.node_degree(NodeIdx::from(i)); // for something, we are adding all node degrees
+            let add = instance.node_degree(NodeIdx::from(i)); // for something, we are adding all node degrees
+
+            // info!("add nd {add} {i}");
+            total_size += add;
         }
 
         for j in 0..num_sets { // for each edge
@@ -50,8 +57,8 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
             glpk::glp_set_row_bnds(lp, row_idx, GLP_LO, 1.0, f64::INFINITY); // the edge needs to be covered
         }
 
-        info!("{}", total_size);
-
+        // info!("Total sze: {total_size}");
+        
         let mut ia: Vec<c_int> = Vec::with_capacity(total_size);
         let mut ja: Vec<c_int> = Vec::with_capacity(total_size);
         let mut ar: Vec<c_double> = Vec::with_capacity(total_size);
@@ -104,6 +111,9 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
 // im lp möchten wir aktuelle Anzahl edges und gesamtanzahl knoten
 
 pub fn solve_ilp_exact(instance: &Instance) -> (usize, Vec<NodeIdx>) {
+    if (instance.num_nodes() == 0 || instance.num_edges() == 0) {
+        return (0, Vec::new());
+    }
     unsafe {
         glpk::glp_term_out(0);
         info!("Solving ILP with number of rows {}", instance.num_edges());
