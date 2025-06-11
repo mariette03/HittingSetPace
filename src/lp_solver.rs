@@ -20,6 +20,8 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
     unsafe {
         glpk::glp_term_out(0);
 
+        info!("Solving lp with number of rows {}", instance.num_edges());
+
         let lp = glpk::glp_create_prob();
 
         glpk::glp_set_prob_name(lp, CString::new("hitting_set_lp").unwrap().as_ptr());
@@ -36,16 +38,16 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         for i in 0..num_elements {
             let col_idx = (i + 1) as i32;
 
-            glpk::glp_set_col_bnds(lp, col_idx, GLP_DB, 0.0, 1.0);
-            glpk::glp_set_obj_coef(lp, col_idx, 1.0);
+            glpk::glp_set_col_bnds(lp, col_idx, GLP_DB, 0.0, 1.0); // each node is chosen (1) or not chosen (0) - or in between
+            glpk::glp_set_obj_coef(lp, col_idx, 1.0); // in the objective funciton, all nodes are added up
 
-            total_size += instance.node_degree(NodeIdx::from(i));
+            total_size += instance.node_degree(NodeIdx::from(i)); // for something, we are adding all node degrees
         }
 
-        for j in 0..num_sets {
+        for j in 0..num_sets { // for each edge
             let row_idx = (j + 1) as i32;
 
-            glpk::glp_set_row_bnds(lp, row_idx, GLP_LO, 1.0, f64::INFINITY);
+            glpk::glp_set_row_bnds(lp, row_idx, GLP_LO, 1.0, f64::INFINITY); // the edge needs to be covered
         }
 
         let mut ia: Vec<c_int> = Vec::with_capacity(total_size);
@@ -56,18 +58,19 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         ja.push(0 as c_int);
         ar.push(0.0 as c_double);
 
-        for j in 0..num_sets {
+        for (j, &edge) in instance.edges().into_iter().enumerate() {
             let row_idx = (j + 1) as c_int;
+            assert!(j+1 <= num_sets);
 
-            for element in instance.edge(EdgeIdx::from(j)) {
-                let col_idx = (element.idx() + 1) as c_int;
+            for node in instance.edge(edge) {
+                let col_idx = (node.idx() + 1) as c_int;
+                assert!(node.idx() + 1 <= num_elements);
 
                 ia.push(row_idx);
                 ja.push(col_idx);
                 ar.push(1.0);
             }
         }
-
         assert_eq!(ia.len(), ja.len());
         assert_eq!(ia.len(), ar.len());
 
@@ -93,9 +96,13 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
     }
 }
 
+// Erkenntnisse: Knoten mehrfach gelöscht, das lag daran, dass er zu optimistischen Code geschrieben hat (genauso viele Variablen wie Knoten)
+// im lp möchten wir aktuelle Anzahl edges und gesamtanzahl knoten
+
 pub fn solve_ilp_exact(instance: &Instance) -> (usize, Vec<NodeIdx>) {
     unsafe {
         glpk::glp_term_out(0);
+        info!("Solving ILP with number of rows {}", instance.num_edges());
 
         let lp = glpk::glp_create_prob();
         glpk::glp_set_prob_name(lp, CString::new("hitting_set_ilp").unwrap().as_ptr());
