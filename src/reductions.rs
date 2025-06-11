@@ -591,9 +591,10 @@ pub fn reduce(
                 reduced_item.apply(instance, &mut state.partial_hs);
             } 
         }
-        let unchanged_len = reduced_items.len();
+        // let unchanged_len = reduced_items.len();
+        // TODO check ob reduced items doppelt sein dürfen
         
-        if report.settings.degree_one_removal {
+        if report.settings.degree_one_removal && reduced_items.len() == unchanged_len {
             // Remove degree one vertices which have a neighbour
             run_reduction(
                 &mut reduced_items,
