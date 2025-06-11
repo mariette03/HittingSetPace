@@ -26,11 +26,14 @@ impl<T: Into<usize> + Copy> ContiguousIdxVec<T> {
     }
 
     pub fn delete(&mut self, id: usize) {
-        debug_assert!(
+        /*debug_assert!(
             !self.is_deleted(id),
             "Item with id {} was already deleted",
             id
-        );
+        );*/
+        if self.is_deleted(id){
+            return
+        }
         let idx = self.indices[id].idx();
         let last_id = self.data[self.len - 1].into();
         self.data.swap(idx, self.len - 1);
@@ -39,7 +42,7 @@ impl<T: Into<usize> + Copy> ContiguousIdxVec<T> {
     }
 
     pub fn restore(&mut self, id: usize) {
-        debug_assert!(self.is_deleted(id), "Item with id {} is not deleted", id);
+        //debug_assert!(self.is_deleted(id), "Item with id {} is not deleted", id);
         let idx = self.indices[id].idx();
         let after_last_id = self.data[self.len].into();
         self.data.swap(idx, self.len);

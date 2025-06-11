@@ -27,13 +27,13 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         glpk::glp_set_prob_name(lp, CString::new("hitting_set_lp").unwrap().as_ptr());
         glpk::glp_set_obj_dir(lp, GLP_MIN);
 
-        let num_sets = instance.num_edges_total();
+        let num_sets = instance.num_edges();
         glpk::glp_add_rows(lp, num_sets as i32);
 
         let num_elements = instance.num_nodes_total();
         glpk::glp_add_cols(lp, num_elements as i32);
 
-        let mut total_size = 0;
+        let mut total_size = 0; //TODO is it an issue that we cast this to int32 later on?
 
         for i in 0..num_elements {
             let col_idx = (i + 1) as i32;
@@ -49,6 +49,8 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
 
             glpk::glp_set_row_bnds(lp, row_idx, GLP_LO, 1.0, f64::INFINITY); // the edge needs to be covered
         }
+
+        info!("{}", total_size);
 
         let mut ia: Vec<c_int> = Vec::with_capacity(total_size);
         let mut ja: Vec<c_int> = Vec::with_capacity(total_size);
@@ -91,6 +93,8 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         }
 
         glpk::glp_delete_prob(lp);
+
+        info!("test nach lp solving");
 
         (z, vertex_importance)
     }
