@@ -88,7 +88,7 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
         ReductionResult::Stop => Status::Stop,
         ReductionResult::Finished => {
             let mut use_ilp : bool = false;
-            use_ilp |= instance.num_nodes() <= report.settings.ilp_size && (report.instance_type & InstanceType::Dense as u32) != 0 && (report.instance_type & InstanceType::Graph as u32)== 0;
+            use_ilp |= instance.num_nodes() <= report.settings.ilp_size && instance.num_edges() != 0 && (report.instance_type & InstanceType::Dense as u32) != 0 && (report.instance_type & InstanceType::Graph as u32)== 0;
             // // use_ilp |= instance.num_nodes() <= 40 && (report.instance_type & InstanceType::Sparse as u32) != 0;
             // use_ilp |= report.settings.ilp_size != 0 && instance.num_nodes() <= 200 && (report.instance_type & InstanceType::Graph as u32) != 0;
 
@@ -119,7 +119,7 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
                 }
             }
             
-            let node = select_vertex(instance, &vertex_importance);
+            let node = select_vertex(instance, &vertex_importance); // TODO abfangen dass instanz empty?
             branch_on(node, instance, state, report, vertex_importance, depth)
         }
     };
