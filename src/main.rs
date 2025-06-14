@@ -1,7 +1,8 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::similar_names, clippy::cast_possible_truncation)]
-use crate::{instance::Instance, report::IlpReductionReport};
+use crate::{instance::{Instance, NodeIdx}, reductions::calc_greedy_approximation, report::{IlpReductionReport, ReductionStats, Report, RuntimeStats}, utils::select_vertex_node_degree};
 use anyhow::{anyhow, Result};
+use env_logger::init;
 use log::{debug, info};
 use std::{
     ffi::OsStr,
@@ -16,7 +17,13 @@ use structopt::{clap::AppSettings, StructOpt};
 use crate::analysis::utils::graph_data_report;
 use crate::report::GreedyMode;
 use crate::report::Settings;
+use crate::solve::State;
 
+
+use std::sync::{Arc, Mutex};
+use signal_hook::consts::SIGTERM;
+use signal_hook::iterator::Signals;
+use std::thread;
 
 
 mod ds_instance;
@@ -189,18 +196,123 @@ fn solve(opts: SolveOpts) -> Result<()> {
     #[cfg(feature = "optilio")]
     let file_name = "hardcode".to_string(); // TODO this is an intermediate solution
 
-    let instance = opts.common.load_instance()?;
+    let mut instance = opts.common.load_instance()?;
 
     #[cfg(not(feature = "optilio"))]
-    let settings = {
+    let settings: Settings = {
         let reader = BufReader::new(File::open(&opts.settings)?);
         serde_json::from_reader(reader)?
     };
     #[cfg(feature = "optilio")]
-    let settings = get_hardcoded_settings();
+    let settings: Settings = get_hardcoded_settings();
+
+
+    let packing_from_scratch_limit = settings.packing_from_scratch_limit;
+    let use_first_lp = settings.lp_guided;
+
+    let mut report = Report {
+        file_name: file_name.clone(),
+        opt: 0,
+        branching_steps: 0,
+        settings: settings.clone(),
+        runtimes: RuntimeStats::default(),
+        reductions: ReductionStats::new(packing_from_scratch_limit),
+        upper_bound_improvements: Vec::new(),
+        instance_type: 0,
+    };
+
+    let instance_type = instance.get_instance_type();
+    info!("Instance has type: {:#b}", instance_type);
+
+    let mut hard_instance : bool = instance.is_hard_instance();
+    info!("Is instance hard? {}", hard_instance);
+
+    report.instance_type = instance_type;
+
+    let mut initial_hs = Vec::new();
+    let mut global_lower_bound = 0;
+
+    let mut state = State {
+        partial_hs: Vec::with_capacity(global_lower_bound),
+        minimum_hs: Arc::new(Mutex::new(initial_hs.clone())),
+        last_log_time: Instant::now(),
+        solve_start_time: Instant::now(),
+        global_lower_bound: global_lower_bound,
+    };
+
+    let minimum_hs_clone = Arc::clone(&state.minimum_hs);
+
+    thread::spawn(move || {
+        let mut signals = Signals::new(&[SIGTERM]).unwrap();
+        for _ in signals.forever() {
+            info!("SIGTERM erhalten – Zustand sichern…");
+
+            if let Ok(current_min_hs) = minimum_hs_clone.lock() {
+                info!("Aktuelles Minimum-HS ({} Knoten): {:?}", current_min_hs.len(), current_min_hs);
+                print!("{}\n", current_min_hs.len());
+                for h in &current_min_hs.clone() {
+                    print!("{}\n", ((usize::from(*h)) + 1));
+                }
+            }
+        }
+    });
+
+
+    let mut initial_hs = calc_greedy_approximation(&instance);
+
+
+    if let Ok(mut current_min_hs) = state.minimum_hs.lock() {
+        current_min_hs.clear();
+        current_min_hs.extend(initial_hs.iter().copied());
+        info!("First value in min hs");
+    }
+
+    // if use_first_lp && !hard_instance {
+    /*if use_first_lp {
+        //initial_hs.reserve(instance.num_nodes_total());
+        //vertex_importance.reserve(instance.num_nodes_total());
+
+        let mut initial_hs = calc_greedy_approximation(&instance);
+
+
+        if let Ok(mut current_min_hs) = state.minimum_hs.lock() {
+            current_min_hs.clear();
+            current_min_hs.extend(initial_hs.iter().copied());
+            info!("First value in min hs");
+        }
+
+        let before = Instant::now();
+        let (lp_bound, mut vertex_importance_lp) = lp_solver::solve_lp(&instance);
+        let time_spend_lp = before.elapsed();
+
+        global_lower_bound = lp_bound;
+
+        initial_hs = reductions::calc_greedy_approximation_from_vec(&mut instance, &mut vertex_importance_lp);
+        /*ensure!(
+            is_hitting_set(&initial_hs, &mut instance),
+            "LP-guided greedy HS is not valid"
+        );*/
+
+        vertex_importance = vertex_importance_lp;
+
+        info!("Size of LP-guided greedy HS: {}, took {:.2?}", initial_hs.len(), time_spend_lp);
+    } else {
+        initial_hs.reserve(instance.num_nodes_total());
+        vertex_importance.reserve(instance.num_nodes_total());
+
+        for i in 0..instance.num_nodes_total() {
+            initial_hs.push(NodeIdx::from(i));
+            vertex_importance.push(1.0);
+        }
+    }*/
+
+    report.opt = initial_hs.len();
+
+
+
 
     info!("Solving {:?}", &opts.common.hypergraph);
-    let (final_hs, report) = solve::solve(instance, file_name, settings)?;
+    let (final_hs, report) = solve::solve(instance, file_name, settings, state, report)?;
 
     // PaceChal Output
     print!("{}\n", final_hs.len());
@@ -242,6 +354,7 @@ fn get_hardcoded_settings() -> Settings {
         degree_one_removal: true,
         lp_guided: true,
         stop_at: 0,
+        enable_lp_reduction: true,
     }
 }
 

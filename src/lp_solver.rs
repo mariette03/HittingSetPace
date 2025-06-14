@@ -46,8 +46,6 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
             glpk::glp_set_obj_coef(lp, col_idx, 1.0); // in the objective funciton, all nodes are added up
 
             let add = instance.node_degree(NodeIdx::from(i)); // for something, we are adding all node degrees
-
-            // info!("add nd {add} {i}");
             total_size += add;
         }
 

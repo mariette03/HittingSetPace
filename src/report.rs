@@ -172,6 +172,8 @@ pub struct Settings {
     /// Stop solving once a hitting set this size or smaller is found
     #[serde(default)]
     pub stop_at: usize,
+
+    pub enable_lp_reduction: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

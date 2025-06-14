@@ -15,14 +15,14 @@ use std::{
 };
 
 #[derive(Copy, Clone, Debug)]
-enum ReducedItem {
+pub enum ReducedItem {
     RemovedNode(NodeIdx),
     RemovedEdge(EdgeIdx),
     ForcedNode(NodeIdx),
 }
 
 impl ReducedItem {
-    fn apply(self, instance: &mut Instance, partial_hs: &mut Vec<NodeIdx>) {
+    pub fn apply(self, instance: &mut Instance, partial_hs: &mut Vec<NodeIdx>) {
         match self {
             Self::RemovedNode(node) => instance.delete_node(node),
             Self::RemovedEdge(edge) => instance.delete_edge(edge),
@@ -84,18 +84,21 @@ pub fn optimistic_reductions(
     instance: &mut Instance,
     state: &mut State,
     vertex_importance: &Vec<f64>,
-) {
-    vertex_importance
-        .iter()
-        .enumerate()
-        .for_each(|(idx, &importance)| {
-            let node = NodeIdx::from(idx);
-            if importance == 0f64 {
-                ReducedItem::RemovedNode(node).apply(instance, &mut state.partial_hs);
-            } else if importance == 1f64 {
-                ReducedItem::ForcedNode(node).apply(instance, &mut state.partial_hs);
+) -> impl Iterator<Item = ReducedItem> {
+    let res: Vec<ReducedItem> = instance.nodes().iter().filter_map(
+            | node | {
+                if vertex_importance[node.idx()] == 0f64 {
+                    Some(ReducedItem::RemovedNode(*node))
+                } else if vertex_importance[node.idx()] == 1f64 {
+                    Some(ReducedItem::ForcedNode(*node))
+                } else {
+                    None
+                }      
             }
-        });
+        ).collect();
+    
+        
+    res.into_iter()
 }
 
 pub fn optimistic_lp_reductions(instance: &mut Instance) -> impl Iterator<Item = ReducedItem> + '_ {
@@ -425,23 +428,25 @@ fn recalculate_greedy_upper_bound(instance: &Instance, state: &mut State, report
     // let branching_steps = report.branching_steps;
     collect_time_info(&mut report.runtimes.greedy, || {
         let greedy = calc_greedy_approximation(instance);
-        if state.partial_hs.len() + greedy.len() < state.minimum_hs.len() {
-            state.minimum_hs.clear();
-            state.minimum_hs.extend(state.partial_hs.iter().copied());
-            state.minimum_hs.extend(greedy.iter().copied());
-            // improvements_list_ref.push(UpperBoundImprovement {
-            //     new_bound: state.minimum_hs.len(),
-            //     branching_steps,
-            //     runtime: state.solve_start_time.elapsed(),
-            // });
-            info!(
-                "Found HS of size {} using greedy (partial {} + greedy {}) |V|={}, |E|={}",
-                state.minimum_hs.len(),
-                state.partial_hs.len(),
-                greedy.len(),
-                instance.num_nodes(),
-                instance.num_edges()
-            );
+        if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+            if state.partial_hs.len() + greedy.len() < min_hs_guard.len() {
+                min_hs_guard.clear();
+                min_hs_guard.extend(state.partial_hs.iter().copied());
+                min_hs_guard.extend(greedy.iter().copied());
+                // improvements_list_ref.push(UpperBoundImprovement {
+                //     new_bound: state.minimum_hs.len(),
+                //     branching_steps,
+                //     runtime: state.solve_start_time.elapsed(),
+                // });
+                info!(
+                    "Found HS of size {} using greedy (partial {} + greedy {}) |V|={}, |E|={}",
+                    min_hs_guard.len(),
+                    state.partial_hs.len(),
+                    greedy.len(),
+                    instance.num_nodes(),
+                    instance.num_edges()
+                );
+            }
         }
     });
 }
@@ -453,7 +458,7 @@ pub fn collect_time_info<T>(runtime: &mut Duration, func: impl FnOnce() -> T) ->
     result
 }
 
-fn run_reduction<I>(
+pub fn run_reduction<I>(
     reduced_items: &mut Vec<ReducedItem>,
     runtime: &mut Duration,
     runs: &mut usize,
@@ -475,19 +480,26 @@ pub fn reduce(
     instance: &mut Instance,
     state: &mut State,
     report: &mut Report,
-    depth: usize
+    depth: usize,
+    vertex_importance: &Vec<f64>,
 ) -> (ReductionResult, Reduction) {
     if report.settings.greedy_mode == GreedyMode::Once {
         recalculate_greedy_upper_bound(instance, state, report);
-        if state.minimum_hs.len() <= report.settings.stop_at {
-            return (ReductionResult::Stop, Reduction(vec![]));
+        if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+            if min_hs_guard.len() <= report.settings.stop_at {
+                return (ReductionResult::Stop, Reduction(vec![]));
+            }
         }
+        // else should NEVER happen
     }
 
     let mut reduced_items = Vec::new();
+    let mut applied_lp_already_once = false;
     let result = loop {
-        if state.partial_hs.len() >= state.minimum_hs.len() {
-            break ReductionResult::Unsolvable;
+        if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+            if state.partial_hs.len() >= min_hs_guard.len() {
+                break ReductionResult::Unsolvable;
+            }
         }
 
         if instance.num_edges() == 0 || instance.num_nodes() == 0 {
@@ -496,15 +508,22 @@ pub fn reduce(
 
         if report.settings.greedy_mode == GreedyMode::AlwaysBeforeBounds {
             recalculate_greedy_upper_bound(instance, state, report);
-            if state.minimum_hs.len() <= report.settings.stop_at {
-                break ReductionResult::Stop;
+            if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+                if min_hs_guard.len() <= report.settings.stop_at {
+                    break ReductionResult::Stop;
+                }
+                if state.partial_hs.len() >= min_hs_guard.len() {
+                    break ReductionResult::Unsolvable;
+                }
             }
-            if state.partial_hs.len() >= state.minimum_hs.len() {
-                break ReductionResult::Unsolvable;
-            }
+            // else should never happen
         }
 
-        let mut lower_bound_breakpoint = state.minimum_hs.len() - state.partial_hs.len();
+        let mut lower_bound_breakpoint = instance.num_nodes_total(); // TODO this might be source of error if if statement is not executed!!
+        if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+            let mut lower_bound_breakpoint = min_hs_guard.len() - state.partial_hs.len();
+        }
+
         if report.settings.enable_max_degree_bound {
             let max_degree_bound = collect_time_info(&mut report.runtimes.max_degree_bound, || {
                 lower_bound::calc_max_degree_bound(instance).unwrap_or(0)
@@ -576,20 +595,32 @@ pub fn reduce(
 
         let unchanged_len = reduced_items.len();
 
-        if depth % 5 == 0 { // optimistic code!
+        if depth % 5 == 0 && report.settings.enable_lp_reduction && !applied_lp_already_once{ // optimistic code!
             info!("Doing LP optimistic reduction...");
-            run_reduction(
-                &mut reduced_items,
-                &mut report.runtimes.vertex_domination,
-                &mut report.reductions.vertex_dominations_runs,
-                &mut report.reductions.vertex_dominations_vertices_found,
-                || optimistic_lp_reductions(instance),
-            );
-
+            if (depth == 0){
+                //info!("Depth is {} for lp reduction", depth);
+                run_reduction(
+                    &mut reduced_items,
+                    &mut report.runtimes.vertex_domination, // this does not make sense, however
+                    &mut report.reductions.vertex_dominations_runs,
+                    &mut report.reductions.vertex_dominations_vertices_found,
+                    || optimistic_reductions(instance, state, vertex_importance),
+                );               
+            }
+            else {
+                run_reduction(
+                    &mut reduced_items,
+                    &mut report.runtimes.vertex_domination,
+                    &mut report.reductions.vertex_dominations_runs,
+                    &mut report.reductions.vertex_dominations_vertices_found,
+                    || optimistic_lp_reductions(instance),
+                );
+            }
             info!("Apply optimistic reduction...");
             for reduced_item in &reduced_items[unchanged_len..] {
                 reduced_item.apply(instance, &mut state.partial_hs);
             } 
+            applied_lp_already_once = true;
         }
         // let unchanged_len = reduced_items.len();
         // TODO check ob reduced items doppelt sein dürfen
@@ -655,13 +686,15 @@ pub fn reduce(
             && report.settings.greedy_mode == GreedyMode::AlwaysBeforeExpensiveReductions
         {
             recalculate_greedy_upper_bound(instance, state, report);
-            if state.minimum_hs.len() <= report.settings.stop_at {
-                break ReductionResult::Stop;
+            if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
+                if min_hs_guard.len() <= report.settings.stop_at {
+                    break ReductionResult::Stop;
+                }
+                if state.partial_hs.len() >= min_hs_guard.len() {
+                    break ReductionResult::Unsolvable;
+                }
+                lower_bound_breakpoint = min_hs_guard.len() - state.partial_hs.len();
             }
-            if state.partial_hs.len() >= state.minimum_hs.len() {
-                break ReductionResult::Unsolvable;
-            }
-            lower_bound_breakpoint = state.minimum_hs.len() - state.partial_hs.len();
         }
 
         if reduced_items.len() == unchanged_len && report.settings.enable_packing_bound {

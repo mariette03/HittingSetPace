@@ -32,3 +32,16 @@ pub fn compute_vertex_importance(instance: &Instance) -> Vec<f64> {
     
     vertex_importance_lp
 }
+
+pub fn select_vertex_node_degree(instance: &Instance) -> NodeIdx {
+    instance
+        .nodes()
+        .iter()
+        .copied()
+        .max_by(|&a, &b| {
+            let score_a = instance.node_degree(a) as f64;
+            let score_b = instance.node_degree(b) as f64;
+            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .expect("selecting on an empty instance")
+}

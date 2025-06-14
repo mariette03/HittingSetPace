@@ -11,10 +11,16 @@ use log::{debug, info, trace, warn};
 use std::time::Instant;
 use crate::reductions::optimistic_reductions;
 
+use std::sync::{Arc, Mutex};
+use signal_hook::consts::SIGTERM;
+use signal_hook::iterator::Signals;
+use std::thread;
+
+
 #[derive(Debug, Clone)]
 pub struct State {
     pub partial_hs: Vec<NodeIdx>,
-    pub minimum_hs: Vec<NodeIdx>,
+    pub minimum_hs: Arc<Mutex<Vec<NodeIdx>>>,
     pub solve_start_time: Instant,
     pub last_log_time: Instant,
     pub global_lower_bound: usize,
@@ -37,6 +43,8 @@ pub fn solve(
     mut instance: Instance,
     file_name: String,
     settings: Settings,
+    mut state: State,
+    mut report: Report,
 ) -> Result<(Vec<NodeIdx>, Report)> {
     let packing_from_scratch_limit = settings.packing_from_scratch_limit;
     let use_first_lp = settings.lp_guided;
@@ -68,6 +76,8 @@ pub fn solve(
     let mut global_lower_bound = 0;
     let mut vertex_importance = Vec::new();
 
+    // TODO diese Dinge hier ggf rauspacken
+
     // if use_first_lp && !hard_instance {
     if use_first_lp {
         let before = Instant::now();
@@ -97,13 +107,6 @@ pub fn solve(
 
     report.opt = initial_hs.len();
 
-    let mut state = State {
-        partial_hs: Vec::with_capacity(global_lower_bound),
-        minimum_hs: initial_hs,
-        last_log_time: Instant::now(),
-        solve_start_time: Instant::now(),
-        global_lower_bound: global_lower_bound,
-    };
 
     /*if hard_instance && (global_lower_bound + 5 < state.minimum_hs.len()) {
         let (_ilp_result, ilp_solution) = lp_solver::solve_ilp_exact(&instance);
@@ -120,18 +123,19 @@ pub fn solve(
     // }
     
     report.runtimes.total = state.solve_start_time.elapsed();
-    report.opt = state.minimum_hs.len();
+    let mut min_hs = state.minimum_hs.lock().unwrap().clone();
+    report.opt = min_hs.len();
 
     // info!("Validating found hitting set");
     assert_eq!(instance.num_nodes_total(), instance.nodes().len());
     assert_eq!(instance.num_edges_total(), instance.edges().len());
-    assert!(is_hitting_set(&state.minimum_hs, &instance));
+    assert!(is_hitting_set(&min_hs, &instance));
 
     info!(
         "Found minimum hitting set in {:.2?} and {} branching steps",
         report.runtimes.total, report.branching_steps
     );
     debug!("Final HS (size {}): {:?}", report.opt, &state.minimum_hs);
-
-    Ok((state.minimum_hs, report))
+    
+    Ok((min_hs, report))
 }

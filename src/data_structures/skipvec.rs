@@ -22,7 +22,7 @@ pub struct SkipVec<T> {
     first: EntryIdx,
     last: EntryIdx,
     len: u32,
-    #[cfg(feature = "debug-skipvec")]
+    //#[cfg(feature = "debug-skipvec")]
     deletions: Vec<EntryIdx>,
 }
 
@@ -31,7 +31,7 @@ struct Entry<T> {
     prev: EntryIdx,
     next: EntryIdx,
     value: T,
-    #[cfg(feature = "debug-skipvec")]
+    //#[cfg(feature = "debug-skipvec")]
     deleted: bool,
 }
 
@@ -61,14 +61,14 @@ impl<T> Entry<T> {
             prev: EntryIdx::INVALID,
             next: EntryIdx::INVALID,
             value,
-            #[cfg(feature = "debug-skipvec")]
+            //#[cfg(feature = "debug-skipvec")]
             deleted: false,
         }
     }
 }
 
 impl<T> SkipVec<T> {
-    #[cfg(feature = "debug-skipvec")]
+    //#[cfg(feature = "debug-skipvec")]
     fn check_invariants(&self) {
         let mut idx = self.first;
         while idx.valid() {
@@ -123,10 +123,10 @@ impl<T> SkipVec<T> {
             first,
             last,
             len,
-            #[cfg(feature = "debug-skipvec")]
+            //#[cfg(feature = "debug-skipvec")]
             deletions: vec![],
         };
-        #[cfg(feature = "debug-skipvec")]
+        //#[cfg(feature = "debug-skipvec")]
         instance.check_invariants();
         instance
     }
@@ -176,11 +176,16 @@ impl<T> SkipVec<T> {
     }
 
     pub fn delete(&mut self, index: usize) {
-        #[cfg(feature = "debug-skipvec")]
+        if self.entries[index].deleted {
+            return;
+        }
+        //#[cfg(feature = "debug-skipvec")]
         {
             debug_assert!(!self.entries[index].deleted, "Entry {} already deleted", index);
             self.entries[index].deleted = true;
         }
+
+
         let entry = &mut self.entries[index]; // Reduce redundant access
         let prev = entry.prev;
         let next = entry.next;
@@ -199,15 +204,16 @@ impl<T> SkipVec<T> {
             self.last = prev;
         }
 
-        #[cfg(feature = "debug-skipvec")]
+        //#[cfg(feature = "debug-skipvec")]
         {
             self.deletions.push(EntryIdx::from(index));
             self.check_invariants();
+            self.entries[index].deleted = true;
         }
     }
 
     pub fn restore(&mut self, index: usize) {
-        #[cfg(feature = "debug-skipvec")]
+        //#[cfg(feature = "debug-skipvec")]
         {
             let popped = self.deletions.pop();
             debug_assert_eq!(popped, Some(EntryIdx::from(index)), "Restorations out-of-order");
@@ -252,7 +258,7 @@ impl<T> Default for SkipVec<T> {
             first: EntryIdx::INVALID,
             last: EntryIdx::INVALID,
             len: 0,
-            #[cfg(feature = "debug-skipvec")]
+            //#[cfg(feature = "debug-skipvec")]
             deletions: vec![],
         }
     }

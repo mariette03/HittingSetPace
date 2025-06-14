@@ -19,6 +19,7 @@ default = []
 optilio = []
 
 [dependencies]
+signal-hook = "0.3"
 anyhow = "1.0"
 derivative = "2.1"
 env_logger = "0.9"
