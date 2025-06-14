@@ -17,8 +17,7 @@ For the second option: Give the inputfile as stdin to the solver, for example li
 Under `test_hs/` you can find a selection of `*.hgr` files, which we used to benchmark our algorithm.
 
 ## Reference
-This codebase is based on this [solver](https://github.com/Felerius/findminhs) and is part of this paper: (https://epubs.siam.org/doi/10.1137/1.9781611977042.17)
-
+This codebase is based on this [solver](https://github.com/Felerius/findminhs), which is described in this paper:
 > Thomas Bläsius, Tobias Friedrich, David Stangl, and Christopher Weyand.  
 > *An Efficient Branch-and-Bound Solver for Hitting Set*.  
 > In Cynthia A. Phillips and Bettina Speckmann (Eds.), Proceedings of the Symposium on Algorithm Engineering and Experiments (ALENEX 2022), Alexandria, VA, USA, January 9–10, 2022, pages 209–220. SIAM, 2022.  
