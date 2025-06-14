@@ -10,5 +10,6 @@
     "degree_one_removal": true,
     "enable_lp_lower_bound": true,
     "ilp_size": 100,
-    "lp_guided": true
+    "lp_guided": true,
+    "enable_lp_reduction": true,
 }
