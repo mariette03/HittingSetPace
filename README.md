@@ -3,15 +3,15 @@ This codebase calculates a hitting set for a given hypergraph - not necissarily 
 
 ## Installing/ compiling
 Make sure cargo and rust are up-to-date.
-First option: Run `cargo build --release` for usage with graph.hgr and settings.json files
+First option: Run `cargo build --release` for usage with graph.hgr and settings.json files  
 Second option: Run `cargo build --release --features optilio` to take the input from stdin and print the solution to stdout (as required for the PACE challenge)
 
 ### Install Dependencies
 Install glpk (you can find it [here](https://www.gnu.org/software/glpk/)). Under ubuntu, you may use ```apt install glpk-utils glpk-doc libglpk-dev```
 
 ## Usage
-For the first option: Use `hitdomsolver solve <hypergraph-file.hgr> <settings-file>`. A standard `settings.json` file is already in the repo - when looking for an exact dominating set, enable_lp_reduction should be set to false.
-For the second option: Give the inputfile as stdin to the solver, for example like this: `cat ./test_hs/bremen_subgraph_100.hgr | ./target/release/hitdomsolver`
+For the first option: Use `hitdomsolver solve <hypergraph-file.hgr> <settings-file>`. A standard `settings.json` file is already in the repo - when looking for an exact dominating set, enable_lp_reduction should be set to false.  
+For the second option: Give the inputfile to the solver via stdin, for example like this: `cat ./test_hs/bremen_subgraph_100.hgr | ./target/release/hitdomsolver`
 
 ## Instances
 Under `test_hs/` you can find a selection of `*.hgr` files, which we used to benchmark our algorithm.
