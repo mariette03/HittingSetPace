@@ -173,10 +173,10 @@ impl SolveOpts {
     fn hardcoded_solve_opts() -> Self {
         SolveOpts {
             common: CommonOpts {
-                hypergraph: PathBuf::from("default.hg"), // hardcoded todo this solution is super ugly
+                hypergraph: PathBuf::from("stdinput"),
                 json: false,
             },
-            settings: PathBuf::from("default_settings.conf"), // hardcoded
+            settings: PathBuf::from("default_settings_hardcoded"), // hardcoded
             solution: None,
             report: None,
         }
@@ -194,7 +194,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
         .ok_or_else(|| anyhow!("File name can't be extracted"))?
         .to_string();
     #[cfg(feature = "optilio")]
-    let file_name = "hardcode".to_string(); // TODO this is an intermediate solution
+    let file_name = "hardcode".to_string();
 
     let mut instance = opts.common.load_instance()?;
 
@@ -225,7 +225,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
     info!("Instance has type: {:#b}", instance_type);
 
     let mut hard_instance : bool = instance.is_hard_instance();
-    info!("Is instance hard? {}", hard_instance);
+    //info!("Is instance hard? {}", hard_instance);
 
     report.instance_type = instance_type;
 
@@ -245,10 +245,9 @@ fn solve(opts: SolveOpts) -> Result<()> {
     thread::spawn(move || {
         let mut signals = Signals::new(&[SIGTERM]).unwrap();
         for _ in signals.forever() {
-            info!("SIGTERM erhalten – Zustand sichern…");
 
             if let Ok(current_min_hs) = minimum_hs_clone.lock() {
-                info!("Aktuelles Minimum-HS ({} Knoten): {:?}", current_min_hs.len(), current_min_hs);
+                //info!("Aktuelles Minimum-HS ({} Knoten): {:?}", current_min_hs.len(), current_min_hs);
                 print!("{}\n", current_min_hs.len());
                 for h in &current_min_hs.clone() {
                     print!("{}\n", ((usize::from(*h)) + 1));
@@ -264,7 +263,7 @@ fn solve(opts: SolveOpts) -> Result<()> {
     if let Ok(mut current_min_hs) = state.minimum_hs.lock() {
         current_min_hs.clear();
         current_min_hs.extend(initial_hs.iter().copied());
-        info!("First value in min hs");
+        //info!("First value in min hs");
     }
 
     // if use_first_lp && !hard_instance {

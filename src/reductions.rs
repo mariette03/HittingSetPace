@@ -105,7 +105,7 @@ pub fn optimistic_lp_reductions(instance: &mut Instance) -> impl Iterator<Item =
     let mut res: Vec<_> = Vec::new();
     if instance.num_edges() > 0 && instance.num_nodes() > 0 {
         let (lp_bound, vertex_importance_lp) = lp_solver::solve_lp(&instance);
-        info!("A: {}, B: {}", instance.num_nodes(), vertex_importance_lp.len());
+        //info!("A: {}, B: {}", instance.num_nodes(), vertex_importance_lp.len());
         res = instance.nodes().iter().filter_map(
             | node | {
                 if vertex_importance_lp[node.idx()] == 0f64 {
@@ -519,7 +519,7 @@ pub fn reduce(
             // else should never happen
         }
 
-        let mut lower_bound_breakpoint = instance.num_nodes_total(); // TODO this might be source of error if if statement is not executed!!
+        let mut lower_bound_breakpoint = instance.num_nodes_total(); // this might be source of error if if statement is not executed (which should NEVER happen)
         if let Ok(mut min_hs_guard) = state.minimum_hs.lock() {
             let mut lower_bound_breakpoint = min_hs_guard.len() - state.partial_hs.len();
         }
@@ -596,7 +596,7 @@ pub fn reduce(
         let unchanged_len = reduced_items.len();
 
         if depth % 5 == 0 && report.settings.enable_lp_reduction && !applied_lp_already_once{ // optimistic code!
-            info!("Doing LP optimistic reduction...");
+            //info!("Doing LP optimistic reduction...");
             if (depth == 0){
                 //info!("Depth is {} for lp reduction", depth);
                 run_reduction(
@@ -616,14 +616,13 @@ pub fn reduce(
                     || optimistic_lp_reductions(instance),
                 );
             }
-            info!("Apply optimistic reduction...");
+            //info!("Apply optimistic reduction...");
             for reduced_item in &reduced_items[unchanged_len..] {
                 reduced_item.apply(instance, &mut state.partial_hs);
             } 
             applied_lp_already_once = true;
         }
         // let unchanged_len = reduced_items.len();
-        // TODO check ob reduced items doppelt sein dürfen
         
         if report.settings.degree_one_removal && reduced_items.len() == unchanged_len {
             // Remove degree one vertices which have a neighbour

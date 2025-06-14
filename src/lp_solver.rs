@@ -24,7 +24,7 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
     unsafe {
         glpk::glp_term_out(0);
 
-        info!("Solving lp with number of rows {}", instance.num_edges());
+        // info!("Solving lp with number of edges {}", instance.num_edges());
 
         let lp = glpk::glp_create_prob();
 
@@ -88,7 +88,7 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         glpk::glp_simplex(lp, ptr::null());
 
         let z = glpk::glp_get_obj_val(lp).ceil() as usize;
-        info!("LP: Objective value (z) = {}", z);
+        //info!("LP: Objective value (z) = {}", z);
 
         let mut vertex_importance = Vec::with_capacity(num_elements);
         for i in 0..num_elements {
@@ -98,8 +98,6 @@ pub fn solve_lp(instance: &Instance) -> (usize, Vec<f64>) {
         }
 
         glpk::glp_delete_prob(lp);
-
-        info!("test nach lp solving");
 
         (z, vertex_importance)
     }
@@ -114,7 +112,7 @@ pub fn solve_ilp_exact(instance: &Instance) -> (usize, Vec<NodeIdx>) {
     }
     unsafe {
         glpk::glp_term_out(0);
-        info!("Solving ILP with number of rows {}", instance.num_edges());
+        // info!("Solving ILP with number of edges {}", instance.num_edges());
 
         let lp = glpk::glp_create_prob();
         glpk::glp_set_prob_name(lp, CString::new("hitting_set_ilp").unwrap().as_ptr());

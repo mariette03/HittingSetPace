@@ -38,7 +38,7 @@ pub(crate) fn branch_on(
 }
 
 pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report: &mut Report, vertex_importance: &mut Vec<f64>, depth: usize) -> Status {
-    info!("Depth is {}", depth);
+    // info!("Depth is {}", depth);
     // let now = Instant::now();
     // if (now - state.last_log_time).as_secs() >= ITERATION_LOG_INTERVAL_SECS {
     //     info!(
@@ -152,7 +152,7 @@ pub(crate) fn solve_recursive(instance: &mut Instance, state: &mut State, report
             }
             
             
-            let node = select_vertex(instance, &vertex_importance); // TODO abfangen dass instanz empty?
+            let node = select_vertex(instance, &vertex_importance);
             branch_on(node, instance, state, report, vertex_importance, depth)
         }
     };

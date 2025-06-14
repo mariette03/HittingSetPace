@@ -65,18 +65,14 @@ pub fn solve(
     }
 
     let instance_type = instance.get_instance_type();
-    info!("Instance has type: {:#b}", instance_type);
 
     let mut hard_instance : bool = instance.is_hard_instance();
-    info!("Is instance hard? {}", hard_instance);
 
     report.instance_type = instance_type;
 
     let mut initial_hs = Vec::new();
     let mut global_lower_bound = 0;
     let mut vertex_importance = Vec::new();
-
-    // TODO diese Dinge hier ggf rauspacken
 
     // if use_first_lp && !hard_instance {
     if use_first_lp {
