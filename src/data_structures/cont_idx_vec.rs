@@ -1,5 +1,7 @@
 use crate::{create_idx_struct, small_indices::SmallIdx};
 use std::{iter::FromIterator, ops::Deref};
+use crate::info;
+
 
 create_idx_struct!(DataIdx);
 
@@ -34,11 +36,15 @@ impl<T: Into<usize> + Copy> ContiguousIdxVec<T> {
         if self.is_deleted(id){
             return
         }
-        let idx = self.indices[id].idx();
-        let last_id = self.data[self.len - 1].into();
-        self.data.swap(idx, self.len - 1);
-        self.indices.swap(id, last_id);
-        self.len -= 1;
+        if self.len > 0 {
+            let idx = self.indices[id].idx();
+            let last_id = self.data[self.len - 1].into();
+            self.data.swap(idx, self.len - 1);
+            self.indices.swap(id, last_id);
+            self.len -= 1;
+        } else {
+            return // should never happen
+        }
     }
 
     pub fn restore(&mut self, id: usize) {
